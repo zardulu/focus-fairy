@@ -1,0 +1,5 @@
+{
+  "name": "FocusFlow AI",
+  "description": "An AI-powered focus assistant that helps you stay on track with your tasks through encouraging chat messages and periodic browser notifications.",
+  "requestFramePermissions": []
+}
