@@ -236,33 +236,41 @@ body {
   color: var(--text-dark);
 }
 
-/* Chat View Container */
+/* Chat View Container - Fixed size window */
 .chat-view-wrapper {
   width: 100%;
+  height: 280px; /* Fixed height chat window */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .chat-pair-container {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: 100%;
+  height: 100%;
+  justify-content: center;
 }
 
-/* User message row - plain text at top, offset to the right */
+/* User message row - plain text at top, aligned right */
 .user-message-row {
   display: flex;
   align-items: flex-start;
+  justify-content: flex-end;
   gap: 16px;
-  padding-left: 180px;
+  padding-left: 140px;
 }
 
 .user-message-text {
-  flex: 1;
   font-size: 14px;
   line-height: 1.6;
   color: var(--text-dark);
   white-space: pre-wrap;
   text-align: left;
-  height: 4.8em; /* Fixed 3 lines: 3 * 1.6 line-height */
+  max-width: 100%;
+  max-height: 4.8em; /* Max 3 lines then scroll */
   overflow-y: auto;
 }
 
