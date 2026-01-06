@@ -1,12 +1,12 @@
-
 import React, { useState } from 'react';
 
 interface InitialTaskInputProps {
     onTaskSubmit: (task: string) => void;
     isLoading: boolean;
+    onApiKeyClick?: () => void;
 }
 
-const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoading }) => {
+const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoading, onApiKeyClick }) => {
     const [task, setTask] = useState('');
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -17,34 +17,92 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
     };
 
     return (
-        <div className="w-full max-w-lg text-center p-8">
-            <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-500 mb-4">
-                FocusFlow AI
-            </h1>
-            <p className="text-lg text-gray-300 mb-8">
-                Your personal AI assistant to help you conquer your goals.
-            </p>
-            <form onSubmit={handleSubmit} className="relative">
-                <input
-                    type="text"
-                    value={task}
-                    onChange={(e) => setTask(e.target.value)}
-                    placeholder="What task will you focus on today?"
-                    className="w-full p-4 pr-12 text-lg bg-gray-800 border-2 border-gray-700 rounded-full focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all duration-300 text-white placeholder-gray-500"
-                    disabled={isLoading}
-                />
-                <button
-                    type="submit"
-                    className="absolute inset-y-0 right-0 flex items-center justify-center w-12 h-12 my-auto mr-2 text-indigo-400 bg-gray-700 rounded-full hover:bg-indigo-600 hover:text-white transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={isLoading || !task.trim()}
+        <div 
+            className="min-h-screen w-full flex flex-col items-center justify-center p-4 relative"
+            style={{ backgroundColor: 'var(--bg-white)' }}
+        >
+            {/* Settings Button */}
+            <button 
+                onClick={onApiKeyClick}
+                className="btn-dark absolute top-6 right-6"
+            >
+                Settings
+            </button>
+
+            {/* Main Content */}
+            <div className="flex flex-col items-center w-full" style={{ maxWidth: '600px' }}>
+                {/* Title */}
+                <h1 
+                    className="font-title text-4xl font-semibold italic mb-10"
+                    style={{ color: 'var(--text-dark)' }}
                 >
-                    {isLoading ? (
-                        <div className="w-5 h-5 border-2 border-t-transparent border-white rounded-full animate-spin"></div>
-                    ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-                    )}
-                </button>
-            </form>
+                    Focus Fairy
+                </h1>
+
+                {/* Fairy and Speech Bubble Container */}
+                <div className="flex items-center w-full mb-8 gap-4">
+                    {/* Fairy */}
+                    <div className="fairy-container animate-float">
+                        <img src="/fairy.svg" alt="Focus Fairy" />
+                    </div>
+
+                    {/* AI Speech Bubble */}
+                    <div className="speech-bubble-ai animate-fadeIn">
+                        <p 
+                            className="text-sm leading-relaxed"
+                            style={{ color: 'var(--text-dark)' }}
+                        >
+                            Hi! I'm your Focus Fairy ✨ What task would you like to focus on today? I'll help break it down into manageable steps.
+                        </p>
+                    </div>
+
+                    {/* Navigation Arrows */}
+                    <div className="nav-arrows">
+                        <div className="nav-arrow" style={{ opacity: 0.3 }}>
+                            <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M1 6L6 1L11 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                        </div>
+                        <div className="nav-arrow" style={{ opacity: 0.3 }}>
+                            <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M1 2L6 7L11 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Input Form */}
+                <form 
+                    onSubmit={handleSubmit} 
+                    className="flex items-center gap-3 w-full"
+                    style={{ paddingLeft: '100px' }}
+                >
+                    <input
+                        type="text"
+                        value={task}
+                        onChange={(e) => setTask(e.target.value)}
+                        placeholder=""
+                        className="input-field flex-1"
+                        disabled={isLoading}
+                    />
+                    <button
+                        type="submit"
+                        className="btn-send"
+                        disabled={isLoading || !task.trim()}
+                    >
+                        {isLoading ? (
+                            <div 
+                                className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
+                                style={{ borderColor: 'var(--text-dark)', borderTopColor: 'transparent' }}
+                            />
+                        ) : (
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                        )}
+                    </button>
+                </form>
+            </div>
         </div>
     );
 };

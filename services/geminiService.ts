@@ -2,10 +2,13 @@
 import { GoogleGenAI, Chat, GenerateContentResponse } from '@google/genai';
 
 const getAi = (): GoogleGenAI => {
-    const apiKey = process.env.API_KEY;
+    // Try localStorage first, then fall back to environment variable
+    const apiKey = localStorage.getItem('gemini_api_key') || import.meta.env.VITE_API_KEY;
     if (!apiKey) {
-        throw new Error("API_KEY environment variable not set");
+        console.error("No API key found in localStorage or environment");
+        throw new Error("API key not set. Please add your Gemini API key.");
     }
+    console.log("API key found, initializing Gemini...");
     return new GoogleGenAI({ apiKey });
 };
 
@@ -36,7 +39,7 @@ const parseInterval = (responseText: string): { cleanText: string; interval: num
 export const createChatSession = (): Chat => {
     const ai = getAi();
     return ai.chats.create({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.0-flash',
         config: {
             systemInstruction: systemInstruction,
         },
@@ -85,7 +88,7 @@ export const generateCheckinMessage = async (task: string): Promise<string> => {
     const prompt = `A user is focused on the task: "${task}". Generate a single, short, encouraging check-in message for a browser notification. Keep it under 15 words. Example: "How's your progress on '${task}' coming along?"`;
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-2.0-flash',
             contents: prompt,
         });
         return response.text ?? "Just checking in. How are you doing?";
