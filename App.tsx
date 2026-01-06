@@ -61,6 +61,8 @@ const App: React.FC = () => {
 
     // Send a single check-in (used by both one-time and recurring)
     const sendCheckin = useCallback(async (fallbackTask: string) => {
+        console.log('🔔 sendCheckin called with fallbackTask:', fallbackTask);
+        
         if (isGeneratingRef.current) {
             console.log(`🔔 Skipped: already generating a check-in message`);
             return;
@@ -71,17 +73,22 @@ const App: React.FC = () => {
         try {
             console.log(`🔔 Generating check-in message...`);
             const taskForCheckin = getCurrentTask() || fallbackTask;
+            console.log('🔔 Task for checkin:', taskForCheckin);
             const checkinMessage = await generateCheckinMessage(taskForCheckin);
             
-            console.log(`🔔 Check-in message: ${checkinMessage}`);
+            console.log(`🔔 Check-in message generated: ${checkinMessage}`);
+            console.log('🔔 Notification.permission:', Notification.permission);
             
             // Show browser notification if permission granted
             if (Notification.permission === 'granted') {
-                new Notification('Focus Fairy Check-in ✨', { 
+                console.log('🔔 Creating browser notification...');
+                const notif = new Notification('Focus Fairy Check-in ✨', { 
                     body: checkinMessage,
-                    icon: '/fairy.svg',
-                    requireInteraction: true
+                    icon: '/fairy.svg'
                 });
+                console.log('🔔 Notification created:', notif);
+            } else {
+                console.log('🔔 Notification permission not granted, skipping browser notification');
             }
             
             // Add message to chat
@@ -96,6 +103,8 @@ const App: React.FC = () => {
 
     // One-time reminder (setTimeout) - for explicit user requests
     const setOneTimeReminder = useCallback((minutes: number, fallbackTask: string) => {
+        console.log('🔔 setOneTimeReminder called:', { minutes, fallbackTask });
+        
         // Clear any existing timers
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         if (intervalRef.current) clearInterval(intervalRef.current);
@@ -115,6 +124,7 @@ const App: React.FC = () => {
         }]);
 
         timeoutRef.current = window.setTimeout(async () => {
+            console.log('🔔 One-time timer fired! Calling sendCheckin...');
             await sendCheckin(fallbackTask);
             setActiveTimer(null); // Clear timer state after firing
             console.log(`🔔 One-time reminder complete, timer cleared.`);
@@ -123,6 +133,8 @@ const App: React.FC = () => {
 
     // Recurring check-in (setInterval) - for default periodic check-ins
     const startRecurringCheckin = useCallback((minutes: number, fallbackTask: string) => {
+        console.log('🔔 startRecurringCheckin called:', { minutes, fallbackTask });
+        
         // Clear any existing timers
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         if (intervalRef.current) clearInterval(intervalRef.current);
@@ -135,6 +147,7 @@ const App: React.FC = () => {
         setActiveTimer(minutes);
 
         intervalRef.current = window.setInterval(async () => {
+            console.log('🔔 Recurring timer fired! Calling sendCheckin...');
             await sendCheckin(fallbackTask);
         }, milliseconds);
     }, [sendCheckin]);
@@ -149,13 +162,19 @@ const App: React.FC = () => {
 
     // Handle reminder configuration from AI tool calls
     const handleReminderConfig = useCallback((reminder: ReminderConfig | null, fallbackTask: string) => {
+        console.log('🔔 handleReminderConfig called with:', { reminder, fallbackTask });
+        
         if (!reminder) {
-            console.log('📋 No reminder configured');
+            console.log('🔔 No reminder configured, returning early');
             return;
         }
         
-        if (notificationPermission !== 'granted') {
-            console.log('📋 Notifications not granted, skipping reminder');
+        // Check browser API directly instead of React state (which can be stale)
+        const currentPermission = Notification.permission;
+        console.log('🔔 Current notification permission:', currentPermission);
+        
+        if (currentPermission !== 'granted') {
+            console.log('🔔 Notifications not granted, skipping reminder');
             setMessages(prev => [...prev, { 
                 sender: 'ai', 
                 text: `⚠️ Enable notifications in your browser to get check-in reminders!` 
@@ -163,7 +182,7 @@ const App: React.FC = () => {
             return;
         }
         
-        console.log(`📋 Reminder configured:`, reminder);
+        console.log('🔔 Setting up reminder:', reminder);
         
         const timeDisplay = reminder.minutes >= 1 
             ? `${reminder.minutes} minute(s)` 
@@ -179,7 +198,7 @@ const App: React.FC = () => {
             }]);
             startRecurringCheckin(reminder.minutes, fallbackTask);
         }
-    }, [notificationPermission, setOneTimeReminder, startRecurringCheckin]);
+    }, [setOneTimeReminder, startRecurringCheckin]);
 
     const handleTaskSubmit = async (newTask: string) => {
         if (!newTask.trim()) return;
@@ -189,6 +208,8 @@ const App: React.FC = () => {
         try {
             initializeChat();
             const { text, reminder } = await getInitialResponse(newTask);
+            console.log('🔔 getInitialResponse returned:', { text: text.substring(0, 50), reminder });
+            
             // Include both the user's initial task AND the AI response
             setMessages([
                 { sender: 'user', text: newTask },
@@ -196,6 +217,7 @@ const App: React.FC = () => {
             ]);
 
             // Let AI decide the reminder configuration via tool calling
+            console.log('🔔 Calling handleReminderConfig with reminder:', reminder);
             handleReminderConfig(reminder, newTask);
             
         } catch (error) {
@@ -206,7 +228,7 @@ const App: React.FC = () => {
             ]);
             
             // Fallback: start default recurring check-in on error
-            if (notificationPermission === 'granted') {
+            if (Notification.permission === 'granted') {
                 startRecurringCheckin(DEFAULT_CHECKIN_MINUTES, newTask);
             }
         } finally {

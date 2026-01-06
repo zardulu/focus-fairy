@@ -227,6 +227,16 @@ const getDefaultReminder = (userInput: string, task: string | null): ReminderCon
     
     const input = userInput.toLowerCase();
     
+    // DEBUG: "test" keyword triggers 10-second reminder for testing
+    if (input.includes('test')) {
+        console.log('🔔 DEBUG: Test keyword detected, setting 10-second reminder');
+        return {
+            type: 'one-time',
+            minutes: 10 / 60, // 10 seconds
+            reason: 'Debug test reminder',
+        };
+    }
+    
     // Check for explicit time requests first
     const explicitTime = extractTimeFromMessage(userInput);
     if (explicitTime) {
@@ -285,15 +295,18 @@ export const getInitialResponse = async (userInput: string): Promise<AIResponse>
     conversationHistory = [{ role: 'user', content: prompt }];
     
     try {
-        console.log('Getting initial response. Is greeting:', userIsGreeting, 'Extracted task:', currentTask);
+        console.log('🔔 Getting initial response. Is greeting:', userIsGreeting, 'Extracted task:', currentTask);
         const response = await callAI(conversationHistory);
+        console.log('🔔 AI response received:', { text: response.text?.substring(0, 50), reminder: response.reminder });
         conversationHistory.push({ role: 'assistant', content: response.text });
         
         // If AI didn't set a reminder but we have a task, use smart defaults
+        console.log('🔔 Checking if default reminder needed. AI reminder:', response.reminder, 'currentTask:', currentTask);
         if (!response.reminder && currentTask) {
             const defaultReminder = getDefaultReminder(userInput, currentTask);
+            console.log('🔔 Default reminder generated:', defaultReminder);
             if (defaultReminder) {
-                console.log('📋 Using default reminder (AI did not set one):', defaultReminder);
+                console.log('🔔 Using default reminder (AI did not set one):', defaultReminder);
                 return {
                     text: response.text,
                     reminder: defaultReminder,
@@ -301,6 +314,7 @@ export const getInitialResponse = async (userInput: string): Promise<AIResponse>
             }
         }
         
+        console.log('🔔 Returning response with reminder:', response.reminder);
         return response;
     } catch (error) {
         console.error("AI API error in getInitialResponse:", error);

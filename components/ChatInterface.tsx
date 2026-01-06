@@ -101,8 +101,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
                         if (Notification.permission === 'granted') {
                             const notif = new Notification('Focus Fairy Test ✨', { 
                                 body: 'If you see this, notifications work! 🎉',
-                                icon: '/fairy.svg',
-                                requireInteraction: true
+                                icon: '/fairy.svg'
                             });
                             console.log('🔔 Notification object:', notif);
                             alert('Notification sent! Check your notification center if you don\'t see a popup.');
