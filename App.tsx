@@ -2,13 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import InitialTaskInput from './components/InitialTaskInput';
 import ChatInterface from './components/ChatInterface';
 import { ChatMessage } from './types';
-import { initializeChat, getInitialResponse, continueChat, generateCheckinMessage, getCurrentTask, extractTimeFromMessage, AIProvider } from './services/aiService';
+import { initializeChat, getInitialResponse, continueChat, generateCheckinMessage, getCurrentTask, AIProvider, ReminderConfig } from './services/aiService';
 
 const DEFAULT_CHECKIN_MINUTES = 15;
 
 const PROVIDERS: { id: AIProvider; name: string; description: string }[] = [
-    { id: 'gemini', name: 'Gemini', description: 'Google AI (gemini-2.5-flash)' },
-    { id: 'openrouter', name: 'OpenRouter', description: 'Mistral 7B (cheap)' },
+    { id: 'gemini', name: 'Gemini', description: 'Direct API (gemini-2.5-flash-lite)' },
+    { id: 'openrouter', name: 'OpenRouter', description: 'Gemini 2.5 Flash (via OpenRouter)' },
     { id: 'groq', name: 'Groq', description: 'Fast Llama 3.1 8B' },
 ];
 
@@ -147,34 +147,57 @@ const App: React.FC = () => {
         };
     }, []);
 
+    // Handle reminder configuration from AI tool calls
+    const handleReminderConfig = useCallback((reminder: ReminderConfig | null, fallbackTask: string) => {
+        if (!reminder) {
+            console.log('📋 No reminder configured');
+            return;
+        }
+        
+        if (notificationPermission !== 'granted') {
+            console.log('📋 Notifications not granted, skipping reminder');
+            setMessages(prev => [...prev, { 
+                sender: 'ai', 
+                text: `⚠️ Enable notifications in your browser to get check-in reminders!` 
+            }]);
+            return;
+        }
+        
+        console.log(`📋 Reminder configured:`, reminder);
+        
+        const timeDisplay = reminder.minutes >= 1 
+            ? `${reminder.minutes} minute(s)` 
+            : `${Math.round(reminder.minutes * 60)} seconds`;
+        
+        if (reminder.type === 'one-time') {
+            setOneTimeReminder(reminder.minutes, fallbackTask);
+        } else {
+            // Add a message for recurring check-ins
+            setMessages(prev => [...prev, { 
+                sender: 'ai', 
+                text: `✨ I'll check in with you every ${timeDisplay}. Let's do this!` 
+            }]);
+            startRecurringCheckin(reminder.minutes, fallbackTask);
+        }
+    }, [notificationPermission, setOneTimeReminder, startRecurringCheckin]);
+
     const handleTaskSubmit = async (newTask: string) => {
         if (!newTask.trim()) return;
         setTask(newTask);
         setIsLoading(true);
 
-        // Check if user explicitly requested a reminder time in their initial message
-        const explicitTime = extractTimeFromMessage(newTask);
-
         try {
             initializeChat();
-            const { text, interval } = await getInitialResponse(newTask);
+            const { text, reminder } = await getInitialResponse(newTask);
             // Include both the user's initial task AND the AI response
             setMessages([
                 { sender: 'user', text: newTask },
                 { sender: 'ai', text }
             ]);
 
-            // Set up reminders
-            if (notificationPermission === 'granted') {
-                if (explicitTime) {
-                    // User explicitly asked for a reminder - one-time
-                    setOneTimeReminder(explicitTime, newTask);
-                } else {
-                    // Default recurring check-in
-                    const checkinTime = interval || DEFAULT_CHECKIN_MINUTES;
-                    startRecurringCheckin(checkinTime, newTask);
-                }
-            }
+            // Let AI decide the reminder configuration via tool calling
+            handleReminderConfig(reminder, newTask);
+            
         } catch (error) {
             console.error("Failed to initialize chat:", error);
             setMessages([
@@ -182,13 +205,9 @@ const App: React.FC = () => {
                 { sender: 'ai', text: "Sorry, I couldn't connect. Please check your API key and refresh." }
             ]);
             
-            // Still start timer even on error
+            // Fallback: start default recurring check-in on error
             if (notificationPermission === 'granted') {
-                if (explicitTime) {
-                    setOneTimeReminder(explicitTime, newTask);
-                } else {
-                    startRecurringCheckin(DEFAULT_CHECKIN_MINUTES, newTask);
-                }
+                startRecurringCheckin(DEFAULT_CHECKIN_MINUTES, newTask);
             }
         } finally {
             setIsLoading(false);
@@ -198,27 +217,17 @@ const App: React.FC = () => {
     const handleSendMessage = async (userMessage: string) => {
         if (!userMessage.trim() || !task) return;
 
-        // Check if user explicitly requested a reminder time
-        const explicitTime = extractTimeFromMessage(userMessage);
-
         const newMessages: ChatMessage[] = [...messages, { sender: 'user', text: userMessage }];
         setMessages(newMessages);
         setIsLoading(true);
 
         try {
-            const { text, interval } = await continueChat(userMessage);
+            const { text, reminder } = await continueChat(userMessage);
             setMessages(prev => [...prev, { sender: 'ai', text }]);
 
-            // Set up reminder if requested
-            if (notificationPermission === 'granted') {
-                if (explicitTime) {
-                    // User explicitly asked for a reminder - one-time
-                    setOneTimeReminder(explicitTime, task);
-                } else if (interval) {
-                    // AI suggested a recurring check-in interval
-                    startRecurringCheckin(interval, task);
-                }
-            }
+            // Let AI decide the reminder configuration via tool calling
+            handleReminderConfig(reminder, task);
+            
         } catch (error) {
             console.error("Failed to send message:", error);
             setMessages(prev => [...prev, { sender: 'ai', text: "I'm having trouble responding right now. Let's try again in a moment." }]);

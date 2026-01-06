@@ -1,3 +1,7 @@
+import { generateText, LanguageModel, tool } from 'ai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createOpenAI } from '@ai-sdk/openai';
+import { z } from 'zod';
 
 export type AIProvider = 'gemini' | 'openrouter' | 'groq';
 
@@ -11,18 +15,34 @@ interface ChatMessage {
     content: string;
 }
 
+// Tool response types
+export interface ReminderConfig {
+    type: 'one-time' | 'recurring';
+    minutes: number;
+    reason: string;
+}
+
+export interface AIResponse {
+    text: string;
+    reminder: ReminderConfig | null;
+}
+
 const systemInstruction = `You are Focus Fairy, a gentle assistant that helps users stay focused.
 
 **RULES**:
 - Keep responses under 30 words. Be warm and brief.
-- No numbered lists, bullet points, or special formatting like brackets or asterisks.
+- No numbered lists, bullet points, or special formatting.
 - Your ONLY job is to help the user focus on their task.
 - If the user hasn't mentioned a specific task yet (just greetings like "hi", "hello"), warmly ask what they'd like to focus on today.
-- If the user mentions a task (like "reply to emails", "study for exam", "write report"), acknowledge it and encourage them.
-- If the user asks to be reminded/checked on, acknowledge it warmly.
-- If the user asks something completely unrelated (trivia, coding help, etc.), kindly say you're just here to help them focus.
+- If the user mentions a task, acknowledge it and encourage them.
+- If the user asks something completely unrelated, kindly say you're just here to help them focus.
 
-**CHECK-IN TIMER**: To set a reminder, write INTERVAL: followed by minutes at the very end. Example: "INTERVAL: 5". Only include this when the user explicitly asks for a reminder or at the very start of a task.`;
+**IMPORTANT**: Use the setReminder tool to set appropriate check-ins based on the task type:
+- For explicit time requests ("remind me in 5 minutes"), use one-time with the exact time requested
+- For deep work/study sessions, use recurring with 25-45 minute intervals
+- For quick tasks (emails, calls), use one-time with 10-15 minutes
+- For ongoing/open-ended work, use recurring with 30 minute intervals
+- Only set reminders when a clear task is mentioned, not for greetings`;
 
 const getConfig = (): AIConfig => {
     const provider = (localStorage.getItem('ai_provider') as AIProvider) || 'gemini';
@@ -37,33 +57,58 @@ const getConfig = (): AIConfig => {
     return { provider, apiKey };
 };
 
-const parseInterval = (responseText: string): { cleanText: string; interval: number | null } => {
-    // Match various formats: INTERVAL: 15, [INTERVAL: 15], (INTERVAL: 15), *INTERVAL: 15*, etc.
-    const intervalRegex = /[\[\(\*\s]*INTERVAL:\s*(\d+)[\]\)\*\s]*/gi;
-    const matches = responseText.match(intervalRegex);
-    
-    let interval: number | null = null;
-    let cleanText = responseText;
-    
-    if (matches) {
-        // Extract the number from the first match
-        const numberMatch = matches[0].match(/(\d+)/);
-        if (numberMatch) {
-            interval = parseInt(numberMatch[1], 10);
+// Get the appropriate model for each provider
+const getModel = (provider: AIProvider, apiKey: string): LanguageModel => {
+    switch (provider) {
+        case 'gemini': {
+            const google = createGoogleGenerativeAI({ apiKey });
+            return google('gemini-2.5-flash');
         }
-        // Remove ALL interval markers from the text
-        cleanText = responseText.replace(intervalRegex, '').trim();
+        case 'openrouter': {
+            // Use .chat() for OpenRouter (uses /chat/completions endpoint)
+            const openrouter = createOpenAI({
+                apiKey,
+                baseURL: 'https://openrouter.ai/api/v1',
+            });
+            return openrouter.chat('google/gemini-2.5-flash-lite');
+        }
+        case 'groq': {
+            // Use .chat() for Groq (uses /chat/completions endpoint)
+            const groq = createOpenAI({
+                apiKey,
+                baseURL: 'https://api.groq.com/openai/v1',
+            });
+            return groq.chat('llama-3.1-8b-instant');
+        }
+        default:
+            throw new Error(`Unknown provider: ${provider}`);
     }
-    
-    // Also clean up any leftover brackets or formatting artifacts
-    cleanText = cleanText.replace(/\[\s*\]/g, '').replace(/\(\s*\)/g, '').trim();
-    
-    return { cleanText, interval };
 };
 
-// Store conversation history for providers that don't have native chat
+// Define the reminder tool schema
+const reminderToolSchema = z.object({
+    type: z.enum(['one-time', 'recurring']).describe(
+        'one-time: fires once (for explicit reminders or quick tasks). recurring: repeats (for deep work/study sessions)'
+    ),
+    minutes: z.number().min(0.1).max(180).describe(
+        'Minutes until reminder (one-time) or between check-ins (recurring). Use exact time if user specifies one.'
+    ),
+    reason: z.string().describe(
+        'Brief explanation of why this timing was chosen'
+    ),
+});
+
+type ReminderToolInput = z.infer<typeof reminderToolSchema>;
+
+const setReminderTool = tool({
+    description: `Set a reminder or check-in for the user's focus session. 
+Use 'one-time' for specific requests like "remind me in 5 minutes" or quick tasks.
+Use 'recurring' for deep work sessions that need periodic check-ins.`,
+    inputSchema: reminderToolSchema,
+});
+
+// Store conversation history
 let conversationHistory: ChatMessage[] = [];
-// Track the actual task extracted from conversation (not just initial input)
 let currentTask: string | null = null;
 
 export const resetConversation = () => {
@@ -72,51 +117,6 @@ export const resetConversation = () => {
 };
 
 export const getCurrentTask = (): string | null => currentTask;
-
-const MAX_INTERVAL_MINUTES = 180; // 3 hours
-
-// Extract explicit time requests from user message (e.g., "remind me in 5 minutes")
-// Returns time in minutes (no minimum - user gets what they ask for)
-export const extractTimeFromMessage = (message: string): number | null => {
-    // Check for seconds first
-    const secondsPatterns = [
-        /(?:remind|check|notify|ping|alert).+?(?:in|after)\s+(\d+)\s*(?:sec|second|secs|seconds)/i,
-        /(?:in|after)\s+(\d+)\s*(?:sec|second|secs|seconds)/i,
-        /(\d+)\s*(?:sec|second|secs|seconds)\s*(?:from now|later|timer|reminder)/i,
-    ];
-    
-    for (const pattern of secondsPatterns) {
-        const match = message.match(pattern);
-        if (match && match[1]) {
-            const seconds = parseInt(match[1], 10);
-            if (seconds > 0) {
-                const minutes = seconds / 60;
-                console.log(`⏱️ Extracted ${seconds} seconds (${minutes.toFixed(3)} minutes)`);
-                return Math.min(minutes, MAX_INTERVAL_MINUTES);
-            }
-        }
-    }
-    
-    // Check for minutes
-    const minutePatterns = [
-        /(?:remind|check|notify|ping|alert).+?(?:in|after)\s+(\d+)\s*(?:min|minute|mins|minutes)/i,
-        /(?:in|after)\s+(\d+)\s*(?:min|minute|mins|minutes)/i,
-        /(\d+)\s*(?:min|minute|mins|minutes)\s*(?:from now|later|timer|reminder)/i,
-    ];
-    
-    for (const pattern of minutePatterns) {
-        const match = message.match(pattern);
-        if (match && match[1]) {
-            const minutes = parseInt(match[1], 10);
-            if (minutes > 0) {
-                console.log(`⏱️ Extracted ${minutes} minutes`);
-                return Math.min(minutes, MAX_INTERVAL_MINUTES);
-            }
-        }
-    }
-    
-    return null;
-};
 
 // Check if input is just a greeting (not a real task)
 const isGreeting = (text: string): boolean => {
@@ -137,7 +137,7 @@ const extractTask = (message: string): string | null => {
     for (const regex of taskIndicators) {
         const match = message.match(regex);
         if (match && match[1]) {
-            return match[1].replace(/\s+in\s+\d+\s*(minutes?|mins?|hours?|hrs?)/i, '').trim();
+            return match[1].replace(/\s+in\s+\d+\s*(minutes?|mins?|hours?|hrs?|seconds?|secs?)/i, '').trim();
         }
     }
     
@@ -149,111 +149,71 @@ const extractTask = (message: string): string | null => {
     return null;
 };
 
-const callGemini = async (apiKey: string, messages: ChatMessage[]): Promise<string> => {
-    const { GoogleGenAI } = await import('@google/genai');
-    const ai = new GoogleGenAI({ apiKey });
-    
-    // Convert messages to Gemini format
-    const contents = messages.map(m => ({
-        role: m.role === 'assistant' ? 'model' : m.role,
-        parts: [{ text: m.content }]
-    }));
-    
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: contents,
-        config: {
-            systemInstruction: systemInstruction,
-        }
-    });
-    
-    return response.text || '';
-};
-
-const callOpenRouter = async (apiKey: string, messages: ChatMessage[]): Promise<string> => {
-    console.log('Calling OpenRouter API...');
-    try {
-        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': window.location.origin,
-                'X-Title': 'Focus Fairy'
-            },
-            body: JSON.stringify({
-                model: 'mistralai/mistral-7b-instruct',
-                messages: [
-                    { role: 'system', content: systemInstruction },
-                    ...messages
-                ]
-            })
-        });
-        
-        console.log('OpenRouter response status:', response.status);
-        
-        if (!response.ok) {
-            const error = await response.text();
-            console.error('OpenRouter error response:', error);
-            throw new Error(`OpenRouter API error (${response.status}): ${error}`);
-        }
-        
-        const data = await response.json();
-        console.log('OpenRouter response data:', data);
-        return data.choices[0]?.message?.content || '';
-    } catch (error) {
-        console.error('OpenRouter fetch error:', error);
-        throw error;
-    }
-};
-
-const callGroq = async (apiKey: string, messages: ChatMessage[]): Promise<string> => {
-    console.log('Calling Groq API...');
-    try {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: 'llama-3.1-8b-instant',
-                messages: [
-                    { role: 'system', content: systemInstruction },
-                    ...messages
-                ]
-            })
-        });
-        
-        console.log('Groq response status:', response.status);
-        
-        if (!response.ok) {
-            const error = await response.text();
-            console.error('Groq error response:', error);
-            throw new Error(`Groq API error (${response.status}): ${error}`);
-        }
-        
-        const data = await response.json();
-        console.log('Groq response received');
-        return data.choices[0]?.message?.content || '';
-    } catch (error) {
-        console.error('Groq fetch error:', error);
-        throw error;
-    }
-};
-
-const callProvider = async (messages: ChatMessage[]): Promise<string> => {
+// Call the AI with tool support
+const callAI = async (messages: ChatMessage[]): Promise<AIResponse> => {
     const { provider, apiKey } = getConfig();
+    const model = getModel(provider, apiKey);
     
-    switch (provider) {
-        case 'gemini':
-            return callGemini(apiKey, messages);
-        case 'openrouter':
-            return callOpenRouter(apiKey, messages);
-        case 'groq':
-            return callGroq(apiKey, messages);
-        default:
-            throw new Error(`Unknown provider: ${provider}`);
+    try {
+        const result = await generateText({
+            model,
+            system: systemInstruction,
+            messages: messages.map(m => ({
+                role: m.role as 'user' | 'assistant',
+                content: m.content,
+            })),
+            tools: {
+                setReminder: setReminderTool,
+            },
+        });
+        
+        console.log('AI SDK Response:', {
+            text: result.text?.substring(0, 100),
+            toolCalls: result.toolCalls || [],
+        });
+        
+        // Extract reminder from tool calls
+        let reminder: ReminderConfig | null = null;
+        
+        for (const toolCall of result.toolCalls || []) {
+            if (toolCall.toolName === 'setReminder' && 'input' in toolCall) {
+                const input = toolCall.input as ReminderToolInput;
+                reminder = {
+                    type: input.type,
+                    minutes: input.minutes,
+                    reason: input.reason,
+                };
+                console.log('📋 Reminder set via tool:', reminder);
+            }
+        }
+        
+        return {
+            text: result.text || "I'm here to help you focus! What would you like to work on?",
+            reminder,
+        };
+    } catch (error) {
+        console.error('AI SDK error:', error);
+        
+        // Fallback: try without tools if tool calling fails
+        try {
+            console.log('Attempting fallback without tools...');
+            const fallbackResult = await generateText({
+                model,
+                system: systemInstruction,
+                messages: messages.map(m => ({
+                    role: m.role as 'user' | 'assistant',
+                    content: m.content,
+                })),
+            });
+            
+            return {
+                text: fallbackResult.text || "I'm here to help you focus!",
+                reminder: null,
+            };
+        } catch (fallbackError) {
+            console.error('Fallback also failed:', fallbackError);
+            throw error;
+        }
     }
 };
 
@@ -261,23 +221,63 @@ export const initializeChat = () => {
     conversationHistory = [];
 };
 
-export const getInitialResponse = async (userInput: string): Promise<{ text: string; interval: number | null }> => {
-    // Check if the user input is a greeting or an actual task
+// Determine default reminder based on task type
+const getDefaultReminder = (userInput: string, task: string | null): ReminderConfig | null => {
+    if (!task) return null;
+    
+    const input = userInput.toLowerCase();
+    
+    // Check for explicit time requests first
+    const explicitTime = extractTimeFromMessage(userInput);
+    if (explicitTime) {
+        return {
+            type: 'one-time',
+            minutes: explicitTime,
+            reason: 'User requested specific time',
+        };
+    }
+    
+    // Quick tasks - one-time reminder
+    const quickTaskKeywords = ['email', 'reply', 'respond', 'call', 'message', 'text', 'quick', 'brief'];
+    if (quickTaskKeywords.some(kw => input.includes(kw))) {
+        return {
+            type: 'one-time',
+            minutes: 10,
+            reason: 'Quick task detected',
+        };
+    }
+    
+    // Deep work - longer recurring intervals
+    const deepWorkKeywords = ['study', 'studying', 'exam', 'thesis', 'essay', 'paper', 'research', 'code', 'coding', 'programming', 'writing', 'reading'];
+    if (deepWorkKeywords.some(kw => input.includes(kw))) {
+        return {
+            type: 'recurring',
+            minutes: 25,
+            reason: 'Deep work/study session detected',
+        };
+    }
+    
+    // Default: recurring check-ins for any other task
+    return {
+        type: 'recurring',
+        minutes: 15,
+        reason: 'Default check-in for task',
+    };
+};
+
+export const getInitialResponse = async (userInput: string): Promise<AIResponse> => {
     const userIsGreeting = isGreeting(userInput);
     const extractedTask = extractTask(userInput);
     
     let prompt: string;
     
     if (userIsGreeting) {
-        // User just said hi - ask them what they want to focus on
         prompt = userInput;
         currentTask = null;
     } else if (extractedTask) {
-        // User mentioned a specific task
         currentTask = extractedTask;
         prompt = `I want to focus on: ${userInput}`;
     } else {
-        // Unclear - treat as potential task but ask for clarification
         prompt = userInput;
         currentTask = userInput.length > 10 ? userInput : null;
     }
@@ -286,22 +286,33 @@ export const getInitialResponse = async (userInput: string): Promise<{ text: str
     
     try {
         console.log('Getting initial response. Is greeting:', userIsGreeting, 'Extracted task:', currentTask);
-        const responseText = await callProvider(conversationHistory);
-        console.log('Got response:', responseText.substring(0, 100) + '...');
-        conversationHistory.push({ role: 'assistant', content: responseText });
+        const response = await callAI(conversationHistory);
+        conversationHistory.push({ role: 'assistant', content: response.text });
         
-        const { cleanText, interval } = parseInterval(responseText);
+        // If AI didn't set a reminder but we have a task, use smart defaults
+        if (!response.reminder && currentTask) {
+            const defaultReminder = getDefaultReminder(userInput, currentTask);
+            if (defaultReminder) {
+                console.log('📋 Using default reminder (AI did not set one):', defaultReminder);
+                return {
+                    text: response.text,
+                    reminder: defaultReminder,
+                };
+            }
+        }
         
-        return { text: cleanText, interval };
+        return response;
     } catch (error) {
         console.error("AI API error in getInitialResponse:", error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        return { text: `I'm having trouble connecting: ${errorMessage}. Please check your API key in Settings.`, interval: null };
+        return { 
+            text: `I'm having trouble connecting: ${errorMessage}. Please check your API key in Settings.`, 
+            reminder: null 
+        };
     }
 };
 
-export const continueChat = async (message: string): Promise<{ text: string; interval: number | null }> => {
-    // Try to extract a task from the message if we don't have one yet
+export const continueChat = async (message: string): Promise<AIResponse> => {
     const extractedTask = extractTask(message);
     if (extractedTask && (!currentTask || extractedTask.length > 10)) {
         currentTask = extractedTask;
@@ -311,37 +322,95 @@ export const continueChat = async (message: string): Promise<{ text: string; int
     conversationHistory.push({ role: 'user', content: message });
     
     try {
-        const responseText = await callProvider(conversationHistory);
-        conversationHistory.push({ role: 'assistant', content: responseText });
+        const response = await callAI(conversationHistory);
+        conversationHistory.push({ role: 'assistant', content: response.text });
         
-        const { cleanText, interval } = parseInterval(responseText);
-
-        return { text: cleanText, interval };
+        // Check if user explicitly requested a reminder in this message
+        const explicitTime = extractTimeFromMessage(message);
+        if (!response.reminder && explicitTime) {
+            console.log('📋 User requested explicit reminder time:', explicitTime);
+            return {
+                text: response.text,
+                reminder: {
+                    type: 'one-time',
+                    minutes: explicitTime,
+                    reason: 'User requested specific time',
+                },
+            };
+        }
+        
+        return response;
     } catch (error) {
         console.error("AI API error in continueChat:", error);
-        return { text: "I'm having trouble responding right now. Please try again in a moment.", interval: null };
+        return { 
+            text: "I'm having trouble responding right now. Please try again in a moment.", 
+            reminder: null 
+        };
     }
 };
 
 export const generateCheckinMessage = async (fallbackTask: string): Promise<string> => {
-    // Use the extracted task from conversation, or fall back to the initial input
     const taskToUse = currentTask || fallbackTask;
     
-    // Don't mention the task if it's just a greeting
     if (isGreeting(taskToUse)) {
         return "Hey! Just checking in. How's your focus going? ✨";
     }
     
-    const prompt = `Generate a short, friendly check-in notification (under 15 words) for someone working on: "${taskToUse}". Don't use brackets or special formatting.`;
+    const prompt = `Generate a short, friendly check-in notification (under 15 words) for someone working on: "${taskToUse}". Don't use special formatting.`;
     
     try {
-        const responseText = await callProvider([{ role: 'user', content: prompt }]);
-        // Clean any potential formatting from the response
-        const { cleanText } = parseInterval(responseText);
-        return cleanText || "Just checking in! How's your progress? ✨";
+        const { provider, apiKey } = getConfig();
+        const model = getModel(provider, apiKey);
+        
+        const result = await generateText({
+            model,
+            messages: [{ role: 'user', content: prompt }],
+        });
+        
+        return result.text || "Just checking in! How's your progress? ✨";
     } catch (error) {
         console.error("AI API error in generateCheckinMessage:", error);
         return `How's your progress going? Keep it up! ✨`;
     }
 };
 
+// Legacy exports for backwards compatibility (can be removed later)
+export const extractTimeFromMessage = (message: string): number | null => {
+    // This is now handled by the AI via tool calling
+    // But keep for fallback/manual override scenarios
+    const MAX_INTERVAL_MINUTES = 180;
+    
+    const secondsPatterns = [
+        /(?:remind|check|notify|ping|alert).+?(?:in|after)\s+(\d+)\s*(?:sec|second|secs|seconds)/i,
+        /(?:in|after)\s+(\d+)\s*(?:sec|second|secs|seconds)/i,
+        /(\d+)\s*(?:sec|second|secs|seconds)\s*(?:from now|later|timer|reminder)/i,
+    ];
+    
+    for (const pattern of secondsPatterns) {
+        const match = message.match(pattern);
+        if (match && match[1]) {
+            const seconds = parseInt(match[1], 10);
+            if (seconds > 0) {
+                return Math.min(seconds / 60, MAX_INTERVAL_MINUTES);
+            }
+        }
+    }
+    
+    const minutePatterns = [
+        /(?:remind|check|notify|ping|alert).+?(?:in|after)\s+(\d+)\s*(?:min|minute|mins|minutes)/i,
+        /(?:in|after)\s+(\d+)\s*(?:min|minute|mins|minutes)/i,
+        /(\d+)\s*(?:min|minute|mins|minutes)\s*(?:from now|later|timer|reminder)/i,
+    ];
+    
+    for (const pattern of minutePatterns) {
+        const match = message.match(pattern);
+        if (match && match[1]) {
+            const minutes = parseInt(match[1], 10);
+            if (minutes > 0) {
+                return Math.min(minutes, MAX_INTERVAL_MINUTES);
+            }
+        }
+    }
+    
+    return null;
+};

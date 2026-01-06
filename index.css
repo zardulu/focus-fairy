@@ -214,8 +214,8 @@ body {
 
 /* Fairy container - same background as page */
 .fairy-container {
-  width: 120px;
-  height: 120px;
+  width: 150px;
+  height: 150px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -224,8 +224,8 @@ body {
 }
 
 .fairy-container img {
-  width: 100px;
-  height: 100px;
+  width: 130px;
+  height: 130px;
   object-fit: contain;
 }
 
@@ -244,7 +244,7 @@ body {
 .chat-pair-container {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
 }
 
 /* User message row - plain text at top, offset to the right */
@@ -252,7 +252,7 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 16px;
-  padding-left: 140px;
+  padding-left: 180px;
 }
 
 .user-message-text {
@@ -262,14 +262,16 @@ body {
   color: var(--text-dark);
   white-space: pre-wrap;
   text-align: left;
+  height: 4.8em; /* Fixed 3 lines: 3 * 1.6 line-height */
+  overflow-y: auto;
 }
 
 /* AI message row - with fairy and bubble, offset to the left */
 .ai-message-row {
   display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  padding-right: 60px;
+  align-items: center;
+  gap: 0;
+  padding-right: 100px;
 }
 
 /* Slide up animation for user message */
