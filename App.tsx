@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import InitialTaskInput from './components/InitialTaskInput';
 import ChatInterface from './components/ChatInterface';
 import { ChatMessage } from './types';
-import { initializeChat, getInitialResponse, continueChat, generateCheckinMessage, AIProvider } from './services/aiService';
+import { initializeChat, getInitialResponse, continueChat, generateCheckinMessage, getCurrentTask, extractTimeFromMessage, AIProvider } from './services/aiService';
 
 const DEFAULT_CHECKIN_MINUTES = 15;
 
@@ -24,6 +24,7 @@ const App: React.FC = () => {
         openrouter: '',
         groq: ''
     });
+    const [activeTimer, setActiveTimer] = useState<number | null>(null); // Track active timer minutes
     const intervalRef = useRef<number | null>(null);
 
     useEffect(() => {
@@ -54,29 +55,95 @@ const App: React.FC = () => {
         setShowApiKeyModal(false);
     };
 
-    const startCheckinTimer = useCallback((minutes: number, currentTask: string) => {
-        if (intervalRef.current) clearInterval(intervalRef.current);
-        
-        console.log(`Setting check-in timer for ${minutes} minutes.`);
+    // Prevent concurrent API calls
+    const isGeneratingRef = useRef<boolean>(false);
+    const timeoutRef = useRef<number | null>(null);
 
-        intervalRef.current = window.setInterval(async () => {
-            if (document.hidden) {
-                const checkinMessage = await generateCheckinMessage(currentTask);
+    // Send a single check-in (used by both one-time and recurring)
+    const sendCheckin = useCallback(async (fallbackTask: string) => {
+        if (isGeneratingRef.current) {
+            console.log(`🔔 Skipped: already generating a check-in message`);
+            return;
+        }
+        
+        isGeneratingRef.current = true;
+        
+        try {
+            console.log(`🔔 Generating check-in message...`);
+            const taskForCheckin = getCurrentTask() || fallbackTask;
+            const checkinMessage = await generateCheckinMessage(taskForCheckin);
+            
+            console.log(`🔔 Check-in message: ${checkinMessage}`);
+            
+            // Show browser notification if permission granted
+            if (Notification.permission === 'granted') {
                 new Notification('Focus Fairy Check-in ✨', { 
                     body: checkinMessage,
-                    icon: '/fairy.svg' 
+                    icon: '/fairy.svg',
+                    requireInteraction: true
                 });
-                setMessages(prev => [...prev, { sender: 'ai', text: `🔔 *Check-in:* ${checkinMessage}` }]);
             }
-        }, minutes * 60 * 1000);
+            
+            // Add message to chat
+            setMessages(prev => [...prev, { sender: 'ai', text: `🔔 ${checkinMessage}` }]);
+            console.log(`🔔 Check-in complete!`);
+        } catch (error) {
+            console.error(`🔔 Check-in error:`, error);
+        } finally {
+            isGeneratingRef.current = false;
+        }
     }, []);
+
+    // One-time reminder (setTimeout) - for explicit user requests
+    const setOneTimeReminder = useCallback((minutes: number, fallbackTask: string) => {
+        // Clear any existing timers
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        
+        const milliseconds = minutes * 60 * 1000;
+        const timeDisplay = minutes >= 1 ? `${minutes} minute(s)` : `${Math.round(minutes * 60)} seconds`;
+        
+        console.log(`🔔 One-time reminder set for ${timeDisplay} (${milliseconds}ms)`);
+        setActiveTimer(minutes);
+        
+        const notifStatus = Notification.permission === 'granted' 
+            ? '' 
+            : ' (⚠️ Enable notifications in your browser for alerts!)';
+        setMessages(prev => [...prev, { 
+            sender: 'ai', 
+            text: `⏰ Got it! I'll remind you in ${timeDisplay}.${notifStatus}` 
+        }]);
+
+        timeoutRef.current = window.setTimeout(async () => {
+            await sendCheckin(fallbackTask);
+            setActiveTimer(null); // Clear timer state after firing
+            console.log(`🔔 One-time reminder complete, timer cleared.`);
+        }, milliseconds);
+    }, [sendCheckin]);
+
+    // Recurring check-in (setInterval) - for default periodic check-ins
+    const startRecurringCheckin = useCallback((minutes: number, fallbackTask: string) => {
+        // Clear any existing timers
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        
+        const milliseconds = minutes * 60 * 1000;
+        const timeDisplay = minutes >= 1 ? `${minutes} minute(s)` : `${Math.round(minutes * 60)} seconds`;
+        
+        console.log(`🔔 Recurring check-in set for every ${timeDisplay} (${milliseconds}ms)`);
+        console.log(`🔔 Notification permission: ${Notification.permission}`);
+        setActiveTimer(minutes);
+
+        intervalRef.current = window.setInterval(async () => {
+            await sendCheckin(fallbackTask);
+        }, milliseconds);
+    }, [sendCheckin]);
 
 
     useEffect(() => {
         return () => {
-            if (intervalRef.current) {
-                clearInterval(intervalRef.current);
-            }
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
         };
     }, []);
 
@@ -84,6 +151,9 @@ const App: React.FC = () => {
         if (!newTask.trim()) return;
         setTask(newTask);
         setIsLoading(true);
+
+        // Check if user explicitly requested a reminder time in their initial message
+        const explicitTime = extractTimeFromMessage(newTask);
 
         try {
             initializeChat();
@@ -94,9 +164,16 @@ const App: React.FC = () => {
                 { sender: 'ai', text }
             ]);
 
+            // Set up reminders
             if (notificationPermission === 'granted') {
-                const checkinTime = interval ?? DEFAULT_CHECKIN_MINUTES;
-                startCheckinTimer(checkinTime, newTask);
+                if (explicitTime) {
+                    // User explicitly asked for a reminder - one-time
+                    setOneTimeReminder(explicitTime, newTask);
+                } else {
+                    // Default recurring check-in
+                    const checkinTime = interval || DEFAULT_CHECKIN_MINUTES;
+                    startRecurringCheckin(checkinTime, newTask);
+                }
             }
         } catch (error) {
             console.error("Failed to initialize chat:", error);
@@ -104,6 +181,15 @@ const App: React.FC = () => {
                 { sender: 'user', text: newTask },
                 { sender: 'ai', text: "Sorry, I couldn't connect. Please check your API key and refresh." }
             ]);
+            
+            // Still start timer even on error
+            if (notificationPermission === 'granted') {
+                if (explicitTime) {
+                    setOneTimeReminder(explicitTime, newTask);
+                } else {
+                    startRecurringCheckin(DEFAULT_CHECKIN_MINUTES, newTask);
+                }
+            }
         } finally {
             setIsLoading(false);
         }
@@ -111,6 +197,9 @@ const App: React.FC = () => {
 
     const handleSendMessage = async (userMessage: string) => {
         if (!userMessage.trim() || !task) return;
+
+        // Check if user explicitly requested a reminder time
+        const explicitTime = extractTimeFromMessage(userMessage);
 
         const newMessages: ChatMessage[] = [...messages, { sender: 'user', text: userMessage }];
         setMessages(newMessages);
@@ -120,8 +209,15 @@ const App: React.FC = () => {
             const { text, interval } = await continueChat(userMessage);
             setMessages(prev => [...prev, { sender: 'ai', text }]);
 
-            if (interval && notificationPermission === 'granted') {
-                startCheckinTimer(interval, task);
+            // Set up reminder if requested
+            if (notificationPermission === 'granted') {
+                if (explicitTime) {
+                    // User explicitly asked for a reminder - one-time
+                    setOneTimeReminder(explicitTime, task);
+                } else if (interval) {
+                    // AI suggested a recurring check-in interval
+                    startRecurringCheckin(interval, task);
+                }
             }
         } catch (error) {
             console.error("Failed to send message:", error);
@@ -230,6 +326,41 @@ const App: React.FC = () => {
                                 <>Get your key from <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="underline">Groq Console</a></>
                             )}
                         </p>
+
+                        {/* Notification Test Section */}
+                        <div className="border-t pt-4 mb-4" style={{ borderColor: 'var(--border-light)' }}>
+                            <p className="text-sm mb-2" style={{ color: 'var(--text-muted)' }}>
+                                Notifications: {Notification.permission === 'granted' ? '✅ Enabled' : Notification.permission === 'denied' ? '❌ Blocked' : '⚠️ Not enabled'}
+                            </p>
+                            <div className="flex gap-2">
+                                {Notification.permission !== 'granted' && (
+                                    <button 
+                                        onClick={() => Notification.requestPermission().then(setNotificationPermission)}
+                                        className="px-3 py-1.5 text-xs rounded-full border"
+                                        style={{ borderColor: 'var(--border-light)', color: 'var(--text-dark)' }}
+                                    >
+                                        Enable Notifications
+                                    </button>
+                                )}
+                                <button 
+                                    onClick={() => {
+                                        if (Notification.permission === 'granted') {
+                                            new Notification('Focus Fairy Test ✨', { 
+                                                body: 'Notifications are working! 🎉',
+                                                icon: '/fairy.svg'
+                                            });
+                                            console.log('🔔 Test notification sent!');
+                                        } else {
+                                            alert('Please enable notifications first!');
+                                        }
+                                    }}
+                                    className="px-3 py-1.5 text-xs rounded-full border"
+                                    style={{ borderColor: 'var(--border-light)', color: 'var(--text-dark)' }}
+                                >
+                                    Test Notification
+                                </button>
+                            </div>
+                        </div>
 
                         <div className="flex gap-3 justify-end">
                             <button 

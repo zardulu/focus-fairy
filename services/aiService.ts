@@ -11,16 +11,18 @@ interface ChatMessage {
     content: string;
 }
 
-const systemInstruction = `You are Focus Fairy, a gentle assistant that helps users stay focused on their task.
+const systemInstruction = `You are Focus Fairy, a gentle assistant that helps users stay focused.
 
 **RULES**:
 - Keep responses under 30 words. Be warm and brief.
-- No numbered lists or bullet points. Just natural, encouraging sentences.
-- Your ONLY job is to help the user focus. Ask how their task is going, encourage them, or gently redirect them.
-- If the user asks something unrelated to their task (off-topic questions, general knowledge, coding help, etc.), kindly say: "I'm just here to help you stay focused on your task! How's it going?"
-- Never provide information, advice, or help outside of focus/productivity encouragement.
+- No numbered lists, bullet points, or special formatting like brackets or asterisks.
+- Your ONLY job is to help the user focus on their task.
+- If the user hasn't mentioned a specific task yet (just greetings like "hi", "hello"), warmly ask what they'd like to focus on today.
+- If the user mentions a task (like "reply to emails", "study for exam", "write report"), acknowledge it and encourage them.
+- If the user asks to be reminded/checked on, acknowledge it warmly.
+- If the user asks something completely unrelated (trivia, coding help, etc.), kindly say you're just here to help them focus.
 
-**CHECK-IN**: To set a check-in timer, add "INTERVAL: <minutes>" at the very end of your message. Only do this at the start or when the user mentions needing more/less time.`;
+**CHECK-IN TIMER**: To set a reminder, write INTERVAL: followed by minutes at the very end. Example: "INTERVAL: 5". Only include this when the user explicitly asks for a reminder or at the very start of a task.`;
 
 const getConfig = (): AIConfig => {
     const provider = (localStorage.getItem('ai_provider') as AIProvider) || 'gemini';
@@ -36,23 +38,115 @@ const getConfig = (): AIConfig => {
 };
 
 const parseInterval = (responseText: string): { cleanText: string; interval: number | null } => {
-    const intervalRegex = /\n?INTERVAL: (\d+)/;
-    const match = responseText.match(intervalRegex);
-
-    if (match && match[1]) {
-        const interval = parseInt(match[1], 10);
-        const cleanText = responseText.replace(intervalRegex, '').trim();
-        return { cleanText, interval };
+    // Match various formats: INTERVAL: 15, [INTERVAL: 15], (INTERVAL: 15), *INTERVAL: 15*, etc.
+    const intervalRegex = /[\[\(\*\s]*INTERVAL:\s*(\d+)[\]\)\*\s]*/gi;
+    const matches = responseText.match(intervalRegex);
+    
+    let interval: number | null = null;
+    let cleanText = responseText;
+    
+    if (matches) {
+        // Extract the number from the first match
+        const numberMatch = matches[0].match(/(\d+)/);
+        if (numberMatch) {
+            interval = parseInt(numberMatch[1], 10);
+        }
+        // Remove ALL interval markers from the text
+        cleanText = responseText.replace(intervalRegex, '').trim();
     }
-
-    return { cleanText: responseText, interval: null };
+    
+    // Also clean up any leftover brackets or formatting artifacts
+    cleanText = cleanText.replace(/\[\s*\]/g, '').replace(/\(\s*\)/g, '').trim();
+    
+    return { cleanText, interval };
 };
 
 // Store conversation history for providers that don't have native chat
 let conversationHistory: ChatMessage[] = [];
+// Track the actual task extracted from conversation (not just initial input)
+let currentTask: string | null = null;
 
 export const resetConversation = () => {
     conversationHistory = [];
+    currentTask = null;
+};
+
+export const getCurrentTask = (): string | null => currentTask;
+
+const MAX_INTERVAL_MINUTES = 180; // 3 hours
+
+// Extract explicit time requests from user message (e.g., "remind me in 5 minutes")
+// Returns time in minutes (no minimum - user gets what they ask for)
+export const extractTimeFromMessage = (message: string): number | null => {
+    // Check for seconds first
+    const secondsPatterns = [
+        /(?:remind|check|notify|ping|alert).+?(?:in|after)\s+(\d+)\s*(?:sec|second|secs|seconds)/i,
+        /(?:in|after)\s+(\d+)\s*(?:sec|second|secs|seconds)/i,
+        /(\d+)\s*(?:sec|second|secs|seconds)\s*(?:from now|later|timer|reminder)/i,
+    ];
+    
+    for (const pattern of secondsPatterns) {
+        const match = message.match(pattern);
+        if (match && match[1]) {
+            const seconds = parseInt(match[1], 10);
+            if (seconds > 0) {
+                const minutes = seconds / 60;
+                console.log(`⏱️ Extracted ${seconds} seconds (${minutes.toFixed(3)} minutes)`);
+                return Math.min(minutes, MAX_INTERVAL_MINUTES);
+            }
+        }
+    }
+    
+    // Check for minutes
+    const minutePatterns = [
+        /(?:remind|check|notify|ping|alert).+?(?:in|after)\s+(\d+)\s*(?:min|minute|mins|minutes)/i,
+        /(?:in|after)\s+(\d+)\s*(?:min|minute|mins|minutes)/i,
+        /(\d+)\s*(?:min|minute|mins|minutes)\s*(?:from now|later|timer|reminder)/i,
+    ];
+    
+    for (const pattern of minutePatterns) {
+        const match = message.match(pattern);
+        if (match && match[1]) {
+            const minutes = parseInt(match[1], 10);
+            if (minutes > 0) {
+                console.log(`⏱️ Extracted ${minutes} minutes`);
+                return Math.min(minutes, MAX_INTERVAL_MINUTES);
+            }
+        }
+    }
+    
+    return null;
+};
+
+// Check if input is just a greeting (not a real task)
+const isGreeting = (text: string): boolean => {
+    const greetings = ['hi', 'hello', 'hey', 'hola', 'sup', 'yo', 'greetings', 'howdy', 'good morning', 'good afternoon', 'good evening'];
+    const normalized = text.toLowerCase().trim().replace(/[!.,?]+$/, '');
+    return greetings.includes(normalized) || normalized.length < 4;
+};
+
+// Extract task from user message if it describes work to do
+const extractTask = (message: string): string | null => {
+    const taskIndicators = [
+        /(?:working on|focus on|need to|want to|going to|have to|should|must|will)\s+(.+)/i,
+        /(?:reply|respond|answer|write|read|study|finish|complete|prepare|review|edit|send|submit)\s+(.+)/i,
+        /(?:remind me to|check.+on me|help me)\s+(.+)/i,
+        /(?:my task is|the task is)\s+(.+)/i,
+    ];
+    
+    for (const regex of taskIndicators) {
+        const match = message.match(regex);
+        if (match && match[1]) {
+            return match[1].replace(/\s+in\s+\d+\s*(minutes?|mins?|hours?|hrs?)/i, '').trim();
+        }
+    }
+    
+    // If the message is long enough and not a greeting, it might be a task description
+    if (message.length > 15 && !isGreeting(message)) {
+        return message;
+    }
+    
+    return null;
 };
 
 const callGemini = async (apiKey: string, messages: ChatMessage[]): Promise<string> => {
@@ -167,13 +261,31 @@ export const initializeChat = () => {
     conversationHistory = [];
 };
 
-export const getInitialResponse = async (task: string): Promise<{ text: string; interval: number | null }> => {
-    const prompt = `My main task is: "${task}". Let's get started. Give me a short, encouraging welcome message and suggest a suitable check-in interval based on this task.`;
+export const getInitialResponse = async (userInput: string): Promise<{ text: string; interval: number | null }> => {
+    // Check if the user input is a greeting or an actual task
+    const userIsGreeting = isGreeting(userInput);
+    const extractedTask = extractTask(userInput);
+    
+    let prompt: string;
+    
+    if (userIsGreeting) {
+        // User just said hi - ask them what they want to focus on
+        prompt = userInput;
+        currentTask = null;
+    } else if (extractedTask) {
+        // User mentioned a specific task
+        currentTask = extractedTask;
+        prompt = `I want to focus on: ${userInput}`;
+    } else {
+        // Unclear - treat as potential task but ask for clarification
+        prompt = userInput;
+        currentTask = userInput.length > 10 ? userInput : null;
+    }
     
     conversationHistory = [{ role: 'user', content: prompt }];
     
     try {
-        console.log('Getting initial response for task:', task);
+        console.log('Getting initial response. Is greeting:', userIsGreeting, 'Extracted task:', currentTask);
         const responseText = await callProvider(conversationHistory);
         console.log('Got response:', responseText.substring(0, 100) + '...');
         conversationHistory.push({ role: 'assistant', content: responseText });
@@ -189,6 +301,13 @@ export const getInitialResponse = async (task: string): Promise<{ text: string; 
 };
 
 export const continueChat = async (message: string): Promise<{ text: string; interval: number | null }> => {
+    // Try to extract a task from the message if we don't have one yet
+    const extractedTask = extractTask(message);
+    if (extractedTask && (!currentTask || extractedTask.length > 10)) {
+        currentTask = extractedTask;
+        console.log('Updated current task to:', currentTask);
+    }
+    
     conversationHistory.push({ role: 'user', content: message });
     
     try {
@@ -204,15 +323,25 @@ export const continueChat = async (message: string): Promise<{ text: string; int
     }
 };
 
-export const generateCheckinMessage = async (task: string): Promise<string> => {
-    const prompt = `A user is focused on the task: "${task}". Generate a single, short, encouraging check-in message for a browser notification. Keep it under 15 words. Example: "How's your progress on '${task}' coming along?"`;
+export const generateCheckinMessage = async (fallbackTask: string): Promise<string> => {
+    // Use the extracted task from conversation, or fall back to the initial input
+    const taskToUse = currentTask || fallbackTask;
+    
+    // Don't mention the task if it's just a greeting
+    if (isGreeting(taskToUse)) {
+        return "Hey! Just checking in. How's your focus going? ✨";
+    }
+    
+    const prompt = `Generate a short, friendly check-in notification (under 15 words) for someone working on: "${taskToUse}". Don't use brackets or special formatting.`;
     
     try {
         const responseText = await callProvider([{ role: 'user', content: prompt }]);
-        return responseText || "Just checking in. How are you doing?";
+        // Clean any potential formatting from the response
+        const { cleanText } = parseInterval(responseText);
+        return cleanText || "Just checking in! How's your progress? ✨";
     } catch (error) {
         console.error("AI API error in generateCheckinMessage:", error);
-        return `How's the focus going on ${task}?`;
+        return `How's your progress going? Keep it up! ✨`;
     }
 };
 

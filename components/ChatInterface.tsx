@@ -74,10 +74,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
     // User messages and AI messages are paired 1:1 (user[0] pairs with ai[0], etc.)
     const hasUserMessages = userMessages.length > 0;
     const userMessage = hasUserMessages ? userMessages[currentPairIndex] : null;
-    const aiMessage = aiMessages[currentPairIndex] || null;
+    
+    // For AI messages: at the latest view (offset 0), always show the most recent AI message
+    // This handles check-in messages that don't have a corresponding user message
+    const isViewingLatest = viewOffset === 0;
+    const aiMessage = isViewingLatest 
+        ? aiMessages[aiMessages.length - 1] || null  // Always show latest AI message
+        : aiMessages[currentPairIndex] || null;      // When scrolling back, use paired index
 
     // Show typing indicator when waiting for AI response
-    const isViewingLatest = viewOffset === 0;
     const waitingForAiResponse = hasUserMessages && userMessage && !aiMessage;
     const showTypingIndicator = (isLoading && isViewingLatest) || waitingForAiResponse;
 
@@ -86,13 +91,47 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
             className="min-h-screen w-full flex flex-col items-center justify-center p-4 relative"
             style={{ backgroundColor: 'var(--bg-white)' }}
         >
-            {/* Settings Button */}
-            <button 
-                onClick={onApiKeyClick}
-                className="btn-dark absolute top-6 right-6"
-            >
-                Settings
-            </button>
+            {/* Top Buttons */}
+            <div className="absolute top-6 right-6 flex gap-2">
+                <button 
+                    onClick={() => {
+                        console.log('🔔 Testing notification...');
+                        console.log('🔔 Notification.permission:', Notification.permission);
+                        
+                        if (Notification.permission === 'granted') {
+                            const notif = new Notification('Focus Fairy Test ✨', { 
+                                body: 'If you see this, notifications work! 🎉',
+                                icon: '/fairy.svg',
+                                requireInteraction: true
+                            });
+                            console.log('🔔 Notification object:', notif);
+                            alert('Notification sent! Check your notification center if you don\'t see a popup.');
+                        } else if (Notification.permission === 'denied') {
+                            alert('Notifications are BLOCKED. Go to browser settings to enable them for this site.');
+                        } else {
+                            Notification.requestPermission().then(permission => {
+                                console.log('🔔 Permission result:', permission);
+                                if (permission === 'granted') {
+                                    new Notification('Focus Fairy Test ✨', { 
+                                        body: 'Notifications enabled! 🎉',
+                                        icon: '/fairy.svg'
+                                    });
+                                }
+                            });
+                        }
+                    }}
+                    className="px-3 py-1.5 text-xs rounded-full border"
+                    style={{ borderColor: 'var(--border-light)', color: 'var(--text-dark)', backgroundColor: 'white' }}
+                >
+                    🔔 Test
+                </button>
+                <button 
+                    onClick={onApiKeyClick}
+                    className="btn-dark"
+                >
+                    Settings
+                </button>
+            </div>
 
             {/* Main Content */}
             <div className="flex flex-col items-center w-full" style={{ maxWidth: '600px' }}>
