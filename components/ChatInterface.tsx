@@ -154,28 +154,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
                                 >
                                     {userMessage.text}
                                 </p>
-                                <div className="nav-arrows">
-                                    <button 
-                                        onClick={scrollUp} 
-                                        className="nav-arrow"
-                                        disabled={!canScrollUp}
-                                        style={{ opacity: canScrollUp ? 1 : 0.3, cursor: canScrollUp ? 'pointer' : 'default' }}
-                                    >
-                                        <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <path d="M1 6L6 1L11 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                        </svg>
-                                    </button>
-                                    <button 
-                                        onClick={scrollDown} 
-                                        className="nav-arrow"
-                                        disabled={!canScrollDown}
-                                        style={{ opacity: canScrollDown ? 1 : 0.3, cursor: canScrollDown ? 'pointer' : 'default' }}
-                                    >
-                                        <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <path d="M1 2L6 7L11 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                        </svg>
-                                    </button>
-                                </div>
                             </div>
                         ) : null}
 
@@ -195,36 +173,34 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
                                     </p>
                                 </div>
                             )}
-                            {!userMessage && (
-                                <div className="nav-arrows">
-                                    <button 
-                                        onClick={scrollUp} 
-                                        className="nav-arrow"
-                                        disabled={!canScrollUp}
-                                        style={{ opacity: canScrollUp ? 1 : 0.3, cursor: canScrollUp ? 'pointer' : 'default' }}
-                                    >
-                                        <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <path d="M1 6L6 1L11 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                        </svg>
-                                    </button>
-                                    <button 
-                                        onClick={scrollDown} 
-                                        className="nav-arrow"
-                                        disabled={!canScrollDown}
-                                        style={{ opacity: canScrollDown ? 1 : 0.3, cursor: canScrollDown ? 'pointer' : 'default' }}
-                                    >
-                                        <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <path d="M1 2L6 7L11 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                        </svg>
-                                    </button>
-                                </div>
-                            )}
+                            <div className="nav-arrows">
+                                <button 
+                                    onClick={scrollUp} 
+                                    className="nav-arrow"
+                                    disabled={!canScrollUp}
+                                    style={{ opacity: canScrollUp ? 1 : 0.3, cursor: canScrollUp ? 'pointer' : 'default' }}
+                                >
+                                    <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M1 6L6 1L11 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                </button>
+                                <button 
+                                    onClick={scrollDown} 
+                                    className="nav-arrow"
+                                    disabled={!canScrollDown}
+                                    style={{ opacity: canScrollDown ? 1 : 0.3, cursor: canScrollDown ? 'pointer' : 'default' }}
+                                >
+                                    <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M1 2L6 7L11 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 {/* Input Form */}
-                <div className="w-full" style={{ paddingLeft: '124px' }}>
+                <div className="w-full" style={{ paddingLeft: '100px' }}>
                     <form 
                         onSubmit={handleSendMessage} 
                         className="flex items-center gap-3 w-full"

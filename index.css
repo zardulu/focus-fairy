@@ -214,19 +214,21 @@ body {
 
 /* Fairy container - same background as page */
 .fairy-container {
-  width: 150px;
-  height: 150px;
+  width: 100px;
+  height: 120px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   background: transparent;
+  overflow: visible;
 }
 
 .fairy-container img {
-  width: 130px;
-  height: 130px;
+  width: 120px;
+  height: 120px;
   object-fit: contain;
+  margin-left: -20px; /* Offset to not push bubble */
 }
 
 /* Response text area */
@@ -254,13 +256,14 @@ body {
   justify-content: center;
 }
 
-/* User message row - plain text at top, aligned right */
+/* User message row - plain text at top, aligned with input bounds */
 .user-message-row {
   display: flex;
   align-items: flex-start;
   justify-content: flex-end;
-  gap: 16px;
-  padding-left: 140px;
+  padding-left: 100px; /* Match input paddingLeft */
+  padding-right: 60px; /* Match send button area */
+  margin-bottom: 8px;
 }
 
 .user-message-text {
@@ -268,18 +271,22 @@ body {
   line-height: 1.6;
   color: var(--text-dark);
   white-space: pre-wrap;
-  text-align: left;
+  text-align: right;
   max-width: 100%;
   max-height: 4.8em; /* Max 3 lines then scroll */
   overflow-y: auto;
 }
 
-/* AI message row - with fairy and bubble, offset to the left */
+/* AI message row - with fairy, bubble, and arrows */
 .ai-message-row {
   display: flex;
   align-items: center;
   gap: 0;
-  padding-right: 100px;
+}
+
+.ai-message-row .nav-arrows {
+  margin-left: auto;
+  padding-right: 12px;
 }
 
 /* Slide up animation for user message */
