@@ -91,39 +91,45 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
             className="min-h-screen w-full flex flex-col items-center justify-center p-4 relative"
             style={{ backgroundColor: 'var(--bg-white)' }}
         >
-            {/* Top Buttons */}
-            <div className="absolute top-6 right-6 flex gap-2">
-                <button
-                    onClick={() => {
-                        console.log('🔔 Testing notification...');
-                        console.log('🔔 Notification.permission:', Notification.permission);
+            {/* Info Tooltip and Settings Button */}
+            <div className="absolute top-6 right-6 flex items-center gap-3">
+                {/* Info Tooltip */}
+                <div className="relative group">
+                    <button
+                        className="w-8 h-8 rounded-full flex items-center justify-center border transition-colors"
+                        style={{
+                            borderColor: 'var(--border-light)',
+                            color: 'var(--text-muted)',
+                            backgroundColor: 'transparent'
+                        }}
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
+                            <path d="M12 16V12M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                    </button>
 
-                        if (Notification.permission === 'granted') {
-                            const notif = new Notification('Focus Fairy Test ✨', {
-                                body: 'If you see this, notifications work! 🎉',
-                                icon: '/fairy.svg'
-                            });
-                            console.log('🔔 Notification object:', notif);
-                            alert('Notification sent! Check your notification center if you don\'t see a popup.');
-                        } else if (Notification.permission === 'denied') {
-                            alert('Notifications are BLOCKED. Go to browser settings to enable them for this site.');
-                        } else {
-                            Notification.requestPermission().then(permission => {
-                                console.log('🔔 Permission result:', permission);
-                                if (permission === 'granted') {
-                                    new Notification('Focus Fairy Test ✨', {
-                                        body: 'Notifications enabled! 🎉',
-                                        icon: '/fairy.svg'
-                                    });
-                                }
-                            });
-                        }
-                    }}
-                    className="px-3 py-1.5 text-xs rounded-full border"
-                    style={{ borderColor: 'var(--border-light)', color: 'var(--text-dark)', backgroundColor: 'white' }}
-                >
-                    🔔 Test
-                </button>
+                    {/* Tooltip Content */}
+                    <div
+                        className="absolute right-0 top-10 w-72 p-4 rounded-xl shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50"
+                        style={{
+                            backgroundColor: 'var(--bg-white)',
+                            border: '1px solid var(--border-light)'
+                        }}
+                    >
+                        <h3 className="font-semibold text-sm mb-2" style={{ color: 'var(--text-dark)' }}>
+                            About Focus Fairy
+                        </h3>
+                        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                            A gentle focus companion that checks in on your progress.
+                            <strong> Bring your own API key</strong> (Gemini, OpenAI, etc).
+                            Chats are <strong>ephemeral</strong> and not saved anywhere.
+                            Keep this tab open for reliable check-in notifications.
+                        </p>
+                    </div>
+                </div>
+
+                {/* Settings Button */}
                 <button
                     onClick={onApiKeyClick}
                     className="btn-dark"

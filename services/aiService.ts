@@ -3,7 +3,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import { z } from 'zod';
 
-export type AIProvider = 'gemini' | 'openrouter' | 'groq';
+export type AIProvider = 'gemini' | 'openai' | 'openrouter' | 'groq';
 
 interface AIConfig {
     provider: AIProvider;
@@ -67,6 +67,10 @@ const getModel = (provider: AIProvider, apiKey: string): LanguageModel => {
         case 'gemini': {
             const google = createGoogleGenerativeAI({ apiKey });
             return google('gemini-2.5-flash');
+        }
+        case 'openai': {
+            const openai = createOpenAI({ apiKey });
+            return openai.chat('gpt-4o-mini');
         }
         case 'openrouter': {
             // Use .chat() for OpenRouter (uses /chat/completions endpoint)

@@ -6,10 +6,11 @@ import { initializeChat, getInitialResponse, continueChat, generateCheckinMessag
 
 const DEFAULT_CHECKIN_MINUTES = 15;
 
-const PROVIDERS: { id: AIProvider; name: string; description: string }[] = [
-    { id: 'gemini', name: 'Gemini', description: 'Direct API (gemini-2.5-flash-lite)' },
-    { id: 'openrouter', name: 'OpenRouter', description: 'Gemini 2.5 Flash (via OpenRouter)' },
-    { id: 'groq', name: 'Groq', description: 'Fast Llama 3.1 8B' },
+const PROVIDERS: { id: AIProvider; name: string }[] = [
+    { id: 'gemini', name: 'Gemini' },
+    { id: 'openai', name: 'OpenAI' },
+    { id: 'openrouter', name: 'OpenRouter' },
+    { id: 'groq', name: 'Groq' },
 ];
 
 const App: React.FC = () => {
@@ -21,11 +22,13 @@ const App: React.FC = () => {
     const [selectedProvider, setSelectedProvider] = useState<AIProvider>('gemini');
     const [apiKeys, setApiKeys] = useState<Record<AIProvider, string>>({
         gemini: '',
+        openai: '',
         openrouter: '',
         groq: ''
     });
     const [activeTimer, setActiveTimer] = useState<number | null>(null); // Track active timer minutes
-    const intervalRef = useRef<number | null>(null);
+    const workerRef = useRef<Worker | null>(null);
+    const currentTaskRef = useRef<string>(''); // Store current task for worker callback
 
     useEffect(() => {
         // Load saved provider and keys
@@ -33,9 +36,10 @@ const App: React.FC = () => {
         if (savedProvider) {
             setSelectedProvider(savedProvider);
         }
-        
+
         setApiKeys({
             gemini: localStorage.getItem('gemini_api_key') || '',
+            openai: localStorage.getItem('openai_api_key') || '',
             openrouter: localStorage.getItem('openrouter_api_key') || '',
             groq: localStorage.getItem('groq_api_key') || ''
         });
@@ -50,6 +54,7 @@ const App: React.FC = () => {
     const handleSaveSettings = () => {
         localStorage.setItem('ai_provider', selectedProvider);
         localStorage.setItem('gemini_api_key', apiKeys.gemini);
+        localStorage.setItem('openai_api_key', apiKeys.openai);
         localStorage.setItem('openrouter_api_key', apiKeys.openrouter);
         localStorage.setItem('groq_api_key', apiKeys.groq);
         setShowApiKeyModal(false);
@@ -57,32 +62,32 @@ const App: React.FC = () => {
 
     // Prevent concurrent API calls
     const isGeneratingRef = useRef<boolean>(false);
-    const timeoutRef = useRef<number | null>(null);
+    const timerTypeRef = useRef<'one-time' | 'recurring' | null>(null);
 
     // Send a single check-in (used by both one-time and recurring)
     const sendCheckin = useCallback(async (fallbackTask: string) => {
         console.log('🔔 sendCheckin called with fallbackTask:', fallbackTask);
-        
+
         if (isGeneratingRef.current) {
             console.log(`🔔 Skipped: already generating a check-in message`);
             return;
         }
-        
+
         isGeneratingRef.current = true;
-        
+
         try {
             console.log(`🔔 Generating check-in message...`);
             const taskForCheckin = getCurrentTask() || fallbackTask;
             console.log('🔔 Task for checkin:', taskForCheckin);
             const checkinMessage = await generateCheckinMessage(taskForCheckin);
-            
+
             console.log(`🔔 Check-in message generated: ${checkinMessage}`);
             console.log('🔔 Notification.permission:', Notification.permission);
-            
+
             // Show browser notification if permission granted
             if (Notification.permission === 'granted') {
                 console.log('🔔 Creating browser notification...');
-                const notif = new Notification('Focus Fairy Check-in ✨', { 
+                const notif = new Notification('Focus Fairy Check-in ✨', {
                     body: checkinMessage,
                     icon: '/fairy.svg'
                 });
@@ -90,7 +95,7 @@ const App: React.FC = () => {
             } else {
                 console.log('🔔 Notification permission not granted, skipping browser notification');
             }
-            
+
             // Add message to chat
             setMessages(prev => [...prev, { sender: 'ai', text: `🔔 ${checkinMessage}` }]);
             console.log(`🔔 Check-in complete!`);
@@ -101,100 +106,118 @@ const App: React.FC = () => {
         }
     }, []);
 
-    // One-time reminder (setTimeout) - for explicit user requests
+    // One-time reminder - using Web Worker for reliable background execution
     const setOneTimeReminder = useCallback((minutes: number, fallbackTask: string) => {
         console.log('🔔 setOneTimeReminder called:', { minutes, fallbackTask });
-        
-        // Clear any existing timers
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        if (intervalRef.current) clearInterval(intervalRef.current);
-        
+
+        // Store task for callback
+        currentTaskRef.current = fallbackTask;
+        timerTypeRef.current = 'one-time';
+
         const milliseconds = minutes * 60 * 1000;
         const timeDisplay = minutes >= 1 ? `${minutes} minute(s)` : `${Math.round(minutes * 60)} seconds`;
-        
+
         console.log(`🔔 One-time reminder set for ${timeDisplay} (${milliseconds}ms)`);
         setActiveTimer(minutes);
-        
-        const notifStatus = Notification.permission === 'granted' 
-            ? '' 
+
+        const notifStatus = Notification.permission === 'granted'
+            ? ''
             : ' (⚠️ Enable notifications in your browser for alerts!)';
-        setMessages(prev => [...prev, { 
-            sender: 'ai', 
-            text: `⏰ Got it! I'll remind you in ${timeDisplay}.${notifStatus}` 
+        setMessages(prev => [...prev, {
+            sender: 'ai',
+            text: `⏰ Got it! I'll remind you in ${timeDisplay}.${notifStatus}`
         }]);
 
-        timeoutRef.current = window.setTimeout(async () => {
-            console.log('🔔 One-time timer fired! Calling sendCheckin...');
-            await sendCheckin(fallbackTask);
-            setActiveTimer(null); // Clear timer state after firing
-            console.log(`🔔 One-time reminder complete, timer cleared.`);
-        }, milliseconds);
-    }, [sendCheckin]);
+        // Start worker timer
+        if (workerRef.current) {
+            workerRef.current.postMessage({ action: 'start', milliseconds, type: 'one-time' });
+        }
+    }, []);
 
-    // Recurring check-in (setInterval) - for default periodic check-ins
+    // Recurring check-in - using Web Worker for reliable background execution
     const startRecurringCheckin = useCallback((minutes: number, fallbackTask: string) => {
         console.log('🔔 startRecurringCheckin called:', { minutes, fallbackTask });
-        
-        // Clear any existing timers
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        if (intervalRef.current) clearInterval(intervalRef.current);
-        
+
+        // Store task for callback
+        currentTaskRef.current = fallbackTask;
+        timerTypeRef.current = 'recurring';
+
         const milliseconds = minutes * 60 * 1000;
         const timeDisplay = minutes >= 1 ? `${minutes} minute(s)` : `${Math.round(minutes * 60)} seconds`;
-        
+
         console.log(`🔔 Recurring check-in set for every ${timeDisplay} (${milliseconds}ms)`);
         console.log(`🔔 Notification permission: ${Notification.permission}`);
         setActiveTimer(minutes);
 
-        intervalRef.current = window.setInterval(async () => {
-            console.log('🔔 Recurring timer fired! Calling sendCheckin...');
-            await sendCheckin(fallbackTask);
-        }, milliseconds);
-    }, [sendCheckin]);
-
-
-    useEffect(() => {
-        return () => {
-            if (intervalRef.current) clearInterval(intervalRef.current);
-            if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        };
+        // Start worker timer
+        if (workerRef.current) {
+            workerRef.current.postMessage({ action: 'start', milliseconds, type: 'recurring' });
+        }
     }, []);
+
+    // Initialize Web Worker and handle messages
+    useEffect(() => {
+        // Create worker
+        workerRef.current = new Worker('/timer-worker.js');
+
+        // Handle timer ticks from worker
+        workerRef.current.onmessage = async (e) => {
+            if (e.data.type === 'tick') {
+                console.log('🔔 Worker timer fired! Calling sendCheckin...');
+                await sendCheckin(currentTaskRef.current);
+
+                // Clear timer state for one-time reminders
+                if (timerTypeRef.current === 'one-time') {
+                    setActiveTimer(null);
+                    timerTypeRef.current = null;
+                    console.log('🔔 One-time reminder complete, timer cleared.');
+                }
+            }
+        };
+
+        return () => {
+            if (workerRef.current) {
+                workerRef.current.postMessage({ action: 'stop' });
+                workerRef.current.terminate();
+            }
+        };
+    }, [sendCheckin]);
 
     // Handle reminder configuration from AI tool calls
     const handleReminderConfig = useCallback((reminder: ReminderConfig | null, fallbackTask: string) => {
         console.log('🔔 handleReminderConfig called with:', { reminder, fallbackTask });
-        
+
         if (!reminder) {
             console.log('🔔 No reminder configured, returning early');
             return;
         }
-        
+
         // Check browser API directly instead of React state (which can be stale)
         const currentPermission = Notification.permission;
         console.log('🔔 Current notification permission:', currentPermission);
-        
+
         if (currentPermission !== 'granted') {
             console.log('🔔 Notifications not granted, skipping reminder');
-            setMessages(prev => [...prev, { 
-                sender: 'ai', 
-                text: `⚠️ Enable notifications in your browser to get check-in reminders!` 
+            setMessages(prev => [...prev, {
+                sender: 'ai',
+                text: `⚠️ Enable notifications in your browser to get check-in reminders!`
             }]);
             return;
         }
-        
+
         console.log('🔔 Setting up reminder:', reminder);
-        
-        const timeDisplay = reminder.minutes >= 1 
-            ? `${reminder.minutes} minute(s)` 
+
+        const timeDisplay = reminder.minutes >= 1
+            ? `${reminder.minutes} minute(s)`
             : `${Math.round(reminder.minutes * 60)} seconds`;
-        
+
         if (reminder.type === 'one-time') {
             setOneTimeReminder(reminder.minutes, fallbackTask);
         } else {
             // Add a message for recurring check-ins
-            setMessages(prev => [...prev, { 
-                sender: 'ai', 
-                text: `✨ I'll check in with you every ${timeDisplay}. Let's do this!` 
+            setMessages(prev => [...prev, {
+                sender: 'ai',
+                text: `✨ I'll check in with you every ${timeDisplay}. Let's do this!`
             }]);
             startRecurringCheckin(reminder.minutes, fallbackTask);
         }
@@ -203,7 +226,7 @@ const App: React.FC = () => {
     const handleTaskSubmit = async (newTask: string) => {
         if (!newTask.trim()) return;
         setTask(newTask);
-        
+
         // Immediately show the user's message before waiting for AI response
         setMessages([{ sender: 'user', text: newTask }]);
         setIsLoading(true);
@@ -212,19 +235,19 @@ const App: React.FC = () => {
             initializeChat();
             const { text, reminder } = await getInitialResponse(newTask);
             console.log('🔔 getInitialResponse returned:', { text: text.substring(0, 50), reminder });
-            
+
             // Add the AI response to the existing user message
             setMessages(prev => [...prev, { sender: 'ai', text }]);
 
             // Let AI decide the reminder configuration via tool calling
             console.log('🔔 Calling handleReminderConfig with reminder:', reminder);
             handleReminderConfig(reminder, newTask);
-            
+
         } catch (error) {
             console.error("Failed to initialize chat:", error);
             // Add error message to the existing user message
             setMessages(prev => [...prev, { sender: 'ai', text: "Sorry, I couldn't connect. Please check your API key and refresh." }]);
-            
+
             // Fallback: start default recurring check-in on error
             if (Notification.permission === 'granted') {
                 startRecurringCheckin(DEFAULT_CHECKIN_MINUTES, newTask);
@@ -247,7 +270,7 @@ const App: React.FC = () => {
 
             // Let AI decide the reminder configuration via tool calling
             handleReminderConfig(reminder, task);
-            
+
         } catch (error) {
             console.error("Failed to send message:", error);
             setMessages(prev => [...prev, { sender: 'ai', text: "I'm having trouble responding right now. Let's try again in a moment." }]);
@@ -269,28 +292,28 @@ const App: React.FC = () => {
                     onApiKeyClick={() => setShowApiKeyModal(true)}
                 />
             ) : (
-                <InitialTaskInput 
-                    onTaskSubmit={handleTaskSubmit} 
-                    isLoading={isLoading} 
+                <InitialTaskInput
+                    onTaskSubmit={handleTaskSubmit}
+                    isLoading={isLoading}
                     onApiKeyClick={() => setShowApiKeyModal(true)}
                 />
             )}
 
             {/* API Key Modal */}
             {showApiKeyModal && (
-                <div 
+                <div
                     className="fixed inset-0 flex items-center justify-center z-50"
                     style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)' }}
                     onClick={() => setShowApiKeyModal(false)}
                 >
-                    <div 
+                    <div
                         className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <h2 className="font-title text-2xl font-semibold mb-4" style={{ color: 'var(--text-dark)' }}>
                             AI Provider Settings
                         </h2>
-                        
+
                         {/* Provider Selection */}
                         <p className="text-sm mb-2" style={{ color: 'var(--text-muted)' }}>
                             Select AI Provider
@@ -306,27 +329,22 @@ const App: React.FC = () => {
                                         backgroundColor: selectedProvider === provider.id ? 'var(--accent-pink-light)' : 'white'
                                     }}
                                 >
-                                    <div 
+                                    <div
                                         className="w-4 h-4 rounded-full border-2 flex items-center justify-center"
                                         style={{ borderColor: selectedProvider === provider.id ? 'var(--accent-pink)' : 'var(--border-light)' }}
                                     >
                                         {selectedProvider === provider.id && (
-                                            <div 
+                                            <div
                                                 className="w-2 h-2 rounded-full"
                                                 style={{ backgroundColor: 'var(--accent-pink)' }}
                                             />
                                         )}
                                     </div>
-                                    <div>
-                                        <div className="font-medium text-sm" style={{ color: 'var(--text-dark)' }}>
-                                            {provider.name}
-                                            {apiKeys[provider.id] && (
-                                                <span className="ml-2 text-xs" style={{ color: 'var(--text-muted)' }}>✓ Key saved</span>
-                                            )}
-                                        </div>
-                                        <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                                            {provider.description}
-                                        </div>
+                                    <div className="font-medium text-sm" style={{ color: 'var(--text-dark)' }}>
+                                        {provider.name}
+                                        {apiKeys[provider.id] && (
+                                            <span className="ml-2 text-xs" style={{ color: 'var(--text-muted)' }}>✓ Key saved</span>
+                                        )}
                                     </div>
                                 </button>
                             ))}
@@ -343,10 +361,13 @@ const App: React.FC = () => {
                             placeholder={`Enter your ${PROVIDERS.find(p => p.id === selectedProvider)?.name} API key...`}
                             className="input-field w-full mb-4"
                         />
-                        
+
                         <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
                             {selectedProvider === 'gemini' && (
                                 <>Get your key from <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="underline">Google AI Studio</a></>
+                            )}
+                            {selectedProvider === 'openai' && (
+                                <>Get your key from <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline">OpenAI Platform</a></>
                             )}
                             {selectedProvider === 'openrouter' && (
                                 <>Get your key from <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="underline">OpenRouter</a></>
@@ -356,50 +377,15 @@ const App: React.FC = () => {
                             )}
                         </p>
 
-                        {/* Notification Test Section */}
-                        <div className="border-t pt-4 mb-4" style={{ borderColor: 'var(--border-light)' }}>
-                            <p className="text-sm mb-2" style={{ color: 'var(--text-muted)' }}>
-                                Notifications: {Notification.permission === 'granted' ? '✅ Enabled' : Notification.permission === 'denied' ? '❌ Blocked' : '⚠️ Not enabled'}
-                            </p>
-                            <div className="flex gap-2">
-                                {Notification.permission !== 'granted' && (
-                                    <button 
-                                        onClick={() => Notification.requestPermission().then(setNotificationPermission)}
-                                        className="px-3 py-1.5 text-xs rounded-full border"
-                                        style={{ borderColor: 'var(--border-light)', color: 'var(--text-dark)' }}
-                                    >
-                                        Enable Notifications
-                                    </button>
-                                )}
-                                <button 
-                                    onClick={() => {
-                                        if (Notification.permission === 'granted') {
-                                            new Notification('Focus Fairy Test ✨', { 
-                                                body: 'Notifications are working! 🎉',
-                                                icon: '/fairy.svg'
-                                            });
-                                            console.log('🔔 Test notification sent!');
-                                        } else {
-                                            alert('Please enable notifications first!');
-                                        }
-                                    }}
-                                    className="px-3 py-1.5 text-xs rounded-full border"
-                                    style={{ borderColor: 'var(--border-light)', color: 'var(--text-dark)' }}
-                                >
-                                    Test Notification
-                                </button>
-                            </div>
-                        </div>
-
                         <div className="flex gap-3 justify-end">
-                            <button 
+                            <button
                                 onClick={() => setShowApiKeyModal(false)}
                                 className="px-4 py-2 text-sm rounded-full"
                                 style={{ color: 'var(--text-muted)' }}
                             >
                                 Cancel
                             </button>
-                            <button 
+                            <button
                                 onClick={handleSaveSettings}
                                 className="btn-dark"
                                 disabled={!currentProviderHasKey}
