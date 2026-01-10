@@ -12,14 +12,14 @@ interface ChatInterfaceProps {
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMessage, isLoading, onApiKeyClick }) => {
     const [inputMessage, setInputMessage] = useState('');
     const [viewOffset, setViewOffset] = useState(0); // 0 = latest, negative = older
-    
+
     // Word limit for input
     const MAX_INPUT_WORDS = 100;
 
     // Separate user and AI messages for easier pairing
     const userMessages = messages.filter(m => m.sender === 'user');
     const aiMessages = messages.filter(m => m.sender === 'ai');
-    
+
     // Reset view to latest when new messages arrive
     useEffect(() => {
         setViewOffset(0);
@@ -69,16 +69,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
     // viewOffset 0 = latest pair, -1 = second to last, etc.
     const latestPairIndex = userMessages.length - 1;
     const currentPairIndex = Math.max(0, latestPairIndex + viewOffset);
-    
+
     // Get current pair to display
     // User messages and AI messages are paired 1:1 (user[0] pairs with ai[0], etc.)
     const hasUserMessages = userMessages.length > 0;
     const userMessage = hasUserMessages ? userMessages[currentPairIndex] : null;
-    
+
     // For AI messages: at the latest view (offset 0), always show the most recent AI message
     // This handles check-in messages that don't have a corresponding user message
     const isViewingLatest = viewOffset === 0;
-    const aiMessage = isViewingLatest 
+    const aiMessage = isViewingLatest
         ? aiMessages[aiMessages.length - 1] || null  // Always show latest AI message
         : aiMessages[currentPairIndex] || null;      // When scrolling back, use paired index
 
@@ -87,19 +87,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
     const showTypingIndicator = (isLoading && isViewingLatest) || waitingForAiResponse;
 
     return (
-        <div 
+        <div
             className="min-h-screen w-full flex flex-col items-center justify-center p-4 relative"
             style={{ backgroundColor: 'var(--bg-white)' }}
         >
             {/* Top Buttons */}
             <div className="absolute top-6 right-6 flex gap-2">
-                <button 
+                <button
                     onClick={() => {
                         console.log('🔔 Testing notification...');
                         console.log('🔔 Notification.permission:', Notification.permission);
-                        
+
                         if (Notification.permission === 'granted') {
-                            const notif = new Notification('Focus Fairy Test ✨', { 
+                            const notif = new Notification('Focus Fairy Test ✨', {
                                 body: 'If you see this, notifications work! 🎉',
                                 icon: '/fairy.svg'
                             });
@@ -111,7 +111,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
                             Notification.requestPermission().then(permission => {
                                 console.log('🔔 Permission result:', permission);
                                 if (permission === 'granted') {
-                                    new Notification('Focus Fairy Test ✨', { 
+                                    new Notification('Focus Fairy Test ✨', {
                                         body: 'Notifications enabled! 🎉',
                                         icon: '/fairy.svg'
                                     });
@@ -124,7 +124,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
                 >
                     🔔 Test
                 </button>
-                <button 
+                <button
                     onClick={onApiKeyClick}
                     className="btn-dark"
                 >
@@ -135,21 +135,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
             {/* Main Content */}
             <div className="flex flex-col items-center w-full" style={{ maxWidth: '600px' }}>
                 {/* Title */}
-                <h1 
-                    className="font-title text-4xl font-semibold italic mb-10"
+                <h1
+                    className="font-title text-4xl font-semibold italic mb-0"
                     style={{ color: 'var(--text-dark)' }}
                 >
                     Focus Fairy
                 </h1>
 
                 {/* Chat View Container */}
-                <div className="chat-view-wrapper w-full mb-6">
+                <div className="chat-view-wrapper w-full mb-0">
                     <div className="chat-pair-container">
                         {/* User Message at Top - plain text, slides up */}
                         {userMessage ? (
                             <div className="user-message-row">
-                                <p 
-                                    className="user-message-text animate-slideUp" 
+                                <p
+                                    className="user-message-text animate-slideUp"
                                     key={`user-${currentPairIndex}`}
                                 >
                                     {userMessage.text}
@@ -173,36 +173,38 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
                                     </p>
                                 </div>
                             )}
-                            <div className="nav-arrows">
-                                <button 
-                                    onClick={scrollUp} 
-                                    className="nav-arrow"
-                                    disabled={!canScrollUp}
-                                    style={{ opacity: canScrollUp ? 1 : 0.3, cursor: canScrollUp ? 'pointer' : 'default' }}
-                                >
-                                    <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M1 6L6 1L11 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                    </svg>
-                                </button>
-                                <button 
-                                    onClick={scrollDown} 
-                                    className="nav-arrow"
-                                    disabled={!canScrollDown}
-                                    style={{ opacity: canScrollDown ? 1 : 0.3, cursor: canScrollDown ? 'pointer' : 'default' }}
-                                >
-                                    <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M1 2L6 7L11 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                    </svg>
-                                </button>
-                            </div>
                         </div>
+                    </div>
+
+                    {/* Navigation arrows - fixed position */}
+                    <div className="nav-arrows">
+                        <button
+                            onClick={scrollUp}
+                            className="nav-arrow"
+                            disabled={!canScrollUp}
+                            style={{ opacity: canScrollUp ? 1 : 0.3, cursor: canScrollUp ? 'pointer' : 'default' }}
+                        >
+                            <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M1 6L6 1L11 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                        </button>
+                        <button
+                            onClick={scrollDown}
+                            className="nav-arrow"
+                            disabled={!canScrollDown}
+                            style={{ opacity: canScrollDown ? 1 : 0.3, cursor: canScrollDown ? 'pointer' : 'default' }}
+                        >
+                            <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M1 2L6 7L11 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
 
                 {/* Input Form */}
-                <div className="w-full" style={{ paddingLeft: '100px' }}>
-                    <form 
-                        onSubmit={handleSendMessage} 
+                <div className="w-full input-form-container" style={{ paddingLeft: '140px', paddingRight: '40px' }}>
+                    <form
+                        onSubmit={handleSendMessage}
                         className="flex items-center gap-3 w-full"
                     >
                         <input
@@ -213,18 +215,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
                             className="input-field flex-1"
                             disabled={isLoading}
                         />
-                        <button
+                        {/* <button
                             type="submit"
                             className="btn-send"
                             disabled={isLoading || !inputMessage.trim()}
                         >
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
-                        </button>
+                        </button> */}
                     </form>
                     {inputMessage && (
-                        <p className="text-xs mt-1 text-right" style={{ color: currentWordCount >= MAX_INPUT_WORDS ? 'var(--accent-pink)' : 'var(--text-muted)' }}>
+                        <p className="text-xs mt-0 text-right" style={{ color: currentWordCount >= MAX_INPUT_WORDS ? 'var(--accent-pink)' : 'var(--text-muted)' }}>
                             {currentWordCount}/{MAX_INPUT_WORDS} words
                         </p>
                     )}

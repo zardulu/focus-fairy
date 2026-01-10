@@ -67,7 +67,7 @@ body {
   box-shadow: 0 2px 8px var(--accent-pink-light);
 }
 
-.speech-bubble-tail {
+/* .speech-bubble-tail {
   width: 23px;
   height: 30px;
   position: relative;
@@ -80,7 +80,7 @@ body {
   position: absolute;
   top: 0;
   left: 0;
-}
+} */
 
 /* Input styling with shadow */
 .input-field {
@@ -147,13 +147,27 @@ body {
 
 /* Animations */
 @keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-6px);
+  }
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .animate-float {
@@ -166,8 +180,15 @@ body {
 
 /* Typing indicator */
 @keyframes pulse {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 1; }
+
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 .typing-dot {
@@ -214,8 +235,8 @@ body {
 
 /* Fairy container - same background as page */
 .fairy-container {
-  width: 100px;
-  height: 120px;
+  width: 140px;
+  height: 140px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -225,10 +246,11 @@ body {
 }
 
 .fairy-container img {
-  width: 120px;
-  height: 120px;
+  width: 150px;
+  height: 150px;
   object-fit: contain;
-  margin-left: -20px; /* Offset to not push bubble */
+  margin-left: -20px;
+  /* Offset to not push bubble */
 }
 
 /* Response text area */
@@ -240,8 +262,10 @@ body {
 
 /* Chat View Container - Fixed size window */
 .chat-view-wrapper {
+  position: relative;
   width: 100%;
-  height: 280px; /* Fixed height chat window */
+  height: 280px;
+  /* Fixed height chat window */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -261,8 +285,8 @@ body {
   display: flex;
   align-items: flex-start;
   justify-content: flex-end;
-  padding-left: 100px; /* Match input paddingLeft */
-  padding-right: 60px; /* Match send button area */
+  padding-left: 140px;
+  padding-right: 40px;
   margin-bottom: 8px;
 }
 
@@ -273,7 +297,8 @@ body {
   white-space: pre-wrap;
   text-align: right;
   max-width: 100%;
-  max-height: 4.8em; /* Max 3 lines then scroll */
+  max-height: 4.8em;
+  /* Max 3 lines then scroll */
   overflow-y: auto;
 }
 
@@ -284,9 +309,12 @@ body {
   gap: 0;
 }
 
-.ai-message-row .nav-arrows {
-  margin-left: auto;
-  padding-right: 12px;
+/* Nav arrows - fixed position in center-right of chat view */
+.chat-view-wrapper .nav-arrows {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 /* Slide up animation for user message */
@@ -295,6 +323,7 @@ body {
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -303,4 +332,48 @@ body {
 
 .animate-slideUp {
   animation: slideUp 0.4s ease-out forwards;
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 640px) {
+
+  /* Smaller fairy on mobile */
+  .fairy-container {
+    width: 80px;
+    height: 80px;
+  }
+
+  .fairy-container img {
+    width: 90px;
+    height: 90px;
+    margin-left: -10px;
+  }
+
+  /* Smaller speech bubble */
+  .speech-bubble-ai {
+    padding: 16px 20px;
+    max-width: 280px;
+  }
+
+  /* Adjust nav arrows */
+  .ai-message-row .nav-arrows {
+    padding-right: 4px;
+  }
+
+  /* Reduce chat wrapper height */
+  .chat-view-wrapper {
+    height: 220px;
+  }
+
+  /* User message row - less padding on mobile */
+  .user-message-row {
+    padding-left: 80px;
+    padding-right: 20px;
+  }
+
+  /* Input form - less padding on mobile */
+  .input-form-container {
+    padding-left: 80px !important;
+    padding-right: 20px !important;
+  }
 }

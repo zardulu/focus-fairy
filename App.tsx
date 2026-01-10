@@ -203,6 +203,9 @@ const App: React.FC = () => {
     const handleTaskSubmit = async (newTask: string) => {
         if (!newTask.trim()) return;
         setTask(newTask);
+        
+        // Immediately show the user's message before waiting for AI response
+        setMessages([{ sender: 'user', text: newTask }]);
         setIsLoading(true);
 
         try {
@@ -210,11 +213,8 @@ const App: React.FC = () => {
             const { text, reminder } = await getInitialResponse(newTask);
             console.log('🔔 getInitialResponse returned:', { text: text.substring(0, 50), reminder });
             
-            // Include both the user's initial task AND the AI response
-            setMessages([
-                { sender: 'user', text: newTask },
-                { sender: 'ai', text }
-            ]);
+            // Add the AI response to the existing user message
+            setMessages(prev => [...prev, { sender: 'ai', text }]);
 
             // Let AI decide the reminder configuration via tool calling
             console.log('🔔 Calling handleReminderConfig with reminder:', reminder);
@@ -222,10 +222,8 @@ const App: React.FC = () => {
             
         } catch (error) {
             console.error("Failed to initialize chat:", error);
-            setMessages([
-                { sender: 'user', text: newTask },
-                { sender: 'ai', text: "Sorry, I couldn't connect. Please check your API key and refresh." }
-            ]);
+            // Add error message to the existing user message
+            setMessages(prev => [...prev, { sender: 'ai', text: "Sorry, I couldn't connect. Please check your API key and refresh." }]);
             
             // Fallback: start default recurring check-in on error
             if (Notification.permission === 'granted') {

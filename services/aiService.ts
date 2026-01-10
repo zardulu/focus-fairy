@@ -27,33 +27,37 @@ export interface AIResponse {
     reminder: ReminderConfig | null;
 }
 
-const systemInstruction = `You are Focus Fairy, a gentle assistant that helps users stay focused.
+const systemInstruction = `You are Focus Fairy, a gentle and playful assistant that helps users stay focused on their tasks.
 
 **RULES**:
-- Keep responses under 30 words. Be warm and brief.
+- Keep responses under 30 words. Be warm, brief, and have personality.
 - No numbered lists, bullet points, or special formatting.
-- Your ONLY job is to help the user focus on their task.
-- If the user hasn't mentioned a specific task yet (just greetings like "hi", "hello"), warmly ask what they'd like to focus on today.
-- If the user mentions a task, acknowledge it and encourage them.
-- If the user asks something completely unrelated, kindly say you're just here to help them focus.
+- Your ONLY job is to help the user focus on a task they want to work on.
 
-**IMPORTANT**: Use the setReminder tool to set appropriate check-ins based on the task type:
-- For explicit time requests ("remind me in 5 minutes"), use one-time with the exact time requested
-- For deep work/study sessions, use recurring with 25-45 minute intervals
-- For quick tasks (emails, calls), use one-time with 10-15 minutes
-- For ongoing/open-ended work, use recurring with 30 minute intervals
-- Only set reminders when a clear task is mentioned, not for greetings`;
+**HANDLING MESSAGES**:
+- TASK: If the user shares a clear, actionable task they want to work on (like "I need to finish my essay" or "working on code"), acknowledge it warmly and use the setReminder tool.
+- GREETING: If they just say hi, hello, hey, or any greeting (even if they address you by name like "hi focus fairy"), warmly ask what they'd like to focus on today. Do NOT set a reminder.
+- OFF-TOPIC: If they ask a question or talk about something unrelated to focusing, briefly acknowledge it with a light comment, then ask what task they'd like to focus on. Do NOT set a reminder.
+
+**REMINDER RULES** (setReminder tool):
+- ONLY use setReminder when the user explicitly states a task they want to work on.
+- NEVER set reminders for: greetings, questions, off-topic chat, or vague messages.
+- If unsure whether something is a task, ask for clarification instead of setting a reminder.
+- For explicit time requests, use one-time with exact time.
+- For deep work/study, use recurring 25-45 minutes.
+- For quick tasks, use one-time 10-15 minutes.
+- For general work, use recurring 30 minutes.`;
 
 const getConfig = (): AIConfig => {
     const provider = (localStorage.getItem('ai_provider') as AIProvider) || 'gemini';
     const apiKey = localStorage.getItem(`${provider}_api_key`) || '';
-    
+
     console.log('AI Config:', { provider, hasKey: !!apiKey });
-    
+
     if (!apiKey) {
         throw new Error(`No API key found for ${provider}. Please add your API key.`);
     }
-    
+
     return { provider, apiKey };
 };
 
@@ -118,42 +122,12 @@ export const resetConversation = () => {
 
 export const getCurrentTask = (): string | null => currentTask;
 
-// Check if input is just a greeting (not a real task)
-const isGreeting = (text: string): boolean => {
-    const greetings = ['hi', 'hello', 'hey', 'hola', 'sup', 'yo', 'greetings', 'howdy', 'good morning', 'good afternoon', 'good evening'];
-    const normalized = text.toLowerCase().trim().replace(/[!.,?]+$/, '');
-    return greetings.includes(normalized) || normalized.length < 4;
-};
-
-// Extract task from user message if it describes work to do
-const extractTask = (message: string): string | null => {
-    const taskIndicators = [
-        /(?:working on|focus on|need to|want to|going to|have to|should|must|will)\s+(.+)/i,
-        /(?:reply|respond|answer|write|read|study|finish|complete|prepare|review|edit|send|submit)\s+(.+)/i,
-        /(?:remind me to|check.+on me|help me)\s+(.+)/i,
-        /(?:my task is|the task is)\s+(.+)/i,
-    ];
-    
-    for (const regex of taskIndicators) {
-        const match = message.match(regex);
-        if (match && match[1]) {
-            return match[1].replace(/\s+in\s+\d+\s*(minutes?|mins?|hours?|hrs?|seconds?|secs?)/i, '').trim();
-        }
-    }
-    
-    // If the message is long enough and not a greeting, it might be a task description
-    if (message.length > 15 && !isGreeting(message)) {
-        return message;
-    }
-    
-    return null;
-};
 
 // Call the AI with tool support
 const callAI = async (messages: ChatMessage[]): Promise<AIResponse> => {
     const { provider, apiKey } = getConfig();
     const model = getModel(provider, apiKey);
-    
+
     try {
         const result = await generateText({
             model,
@@ -166,15 +140,15 @@ const callAI = async (messages: ChatMessage[]): Promise<AIResponse> => {
                 setReminder: setReminderTool,
             },
         });
-        
+
         console.log('AI SDK Response:', {
             text: result.text?.substring(0, 100),
             toolCalls: result.toolCalls || [],
         });
-        
+
         // Extract reminder from tool calls
         let reminder: ReminderConfig | null = null;
-        
+
         for (const toolCall of result.toolCalls || []) {
             if (toolCall.toolName === 'setReminder' && 'input' in toolCall) {
                 const input = toolCall.input as ReminderToolInput;
@@ -186,14 +160,14 @@ const callAI = async (messages: ChatMessage[]): Promise<AIResponse> => {
                 console.log('📋 Reminder set via tool:', reminder);
             }
         }
-        
+
         return {
             text: result.text || "I'm here to help you focus! What would you like to work on?",
             reminder,
         };
     } catch (error) {
         console.error('AI SDK error:', error);
-        
+
         // Fallback: try without tools if tool calling fails
         try {
             console.log('Attempting fallback without tools...');
@@ -205,7 +179,7 @@ const callAI = async (messages: ChatMessage[]): Promise<AIResponse> => {
                     content: m.content,
                 })),
             });
-            
+
             return {
                 text: fallbackResult.text || "I'm here to help you focus!",
                 reminder: null,
@@ -221,166 +195,78 @@ export const initializeChat = () => {
     conversationHistory = [];
 };
 
-// Determine default reminder based on task type
-const getDefaultReminder = (userInput: string, task: string | null): ReminderConfig | null => {
-    if (!task) return null;
-    
-    const input = userInput.toLowerCase();
-    
-    // DEBUG: "test" keyword triggers 10-second reminder for testing
-    if (input.includes('test')) {
-        console.log('🔔 DEBUG: Test keyword detected, setting 10-second reminder');
-        return {
-            type: 'one-time',
-            minutes: 10 / 60, // 10 seconds
-            reason: 'Debug test reminder',
-        };
-    }
-    
-    // Check for explicit time requests first
-    const explicitTime = extractTimeFromMessage(userInput);
-    if (explicitTime) {
-        return {
-            type: 'one-time',
-            minutes: explicitTime,
-            reason: 'User requested specific time',
-        };
-    }
-    
-    // Quick tasks - one-time reminder
-    const quickTaskKeywords = ['email', 'reply', 'respond', 'call', 'message', 'text', 'quick', 'brief'];
-    if (quickTaskKeywords.some(kw => input.includes(kw))) {
-        return {
-            type: 'one-time',
-            minutes: 10,
-            reason: 'Quick task detected',
-        };
-    }
-    
-    // Deep work - longer recurring intervals
-    const deepWorkKeywords = ['study', 'studying', 'exam', 'thesis', 'essay', 'paper', 'research', 'code', 'coding', 'programming', 'writing', 'reading'];
-    if (deepWorkKeywords.some(kw => input.includes(kw))) {
-        return {
-            type: 'recurring',
-            minutes: 25,
-            reason: 'Deep work/study session detected',
-        };
-    }
-    
-    // Default: recurring check-ins for any other task
-    return {
-        type: 'recurring',
-        minutes: 15,
-        reason: 'Default check-in for task',
-    };
-};
+
 
 export const getInitialResponse = async (userInput: string): Promise<AIResponse> => {
-    const userIsGreeting = isGreeting(userInput);
-    const extractedTask = extractTask(userInput);
-    
-    let prompt: string;
-    
-    if (userIsGreeting) {
-        prompt = userInput;
-        currentTask = null;
-    } else if (extractedTask) {
-        currentTask = extractedTask;
-        prompt = `I want to focus on: ${userInput}`;
-    } else {
-        prompt = userInput;
-        currentTask = userInput.length > 10 ? userInput : null;
-    }
-    
-    conversationHistory = [{ role: 'user', content: prompt }];
-    
+    // Let the AI fully determine if this is a task, greeting, or off-topic message
+    conversationHistory = [{ role: 'user', content: userInput }];
+
     try {
-        console.log('🔔 Getting initial response. Is greeting:', userIsGreeting, 'Extracted task:', currentTask);
+        console.log('🔔 Getting initial response for:', userInput);
         const response = await callAI(conversationHistory);
-        console.log('🔔 AI response received:', { text: response.text?.substring(0, 50), reminder: response.reminder });
+        console.log('🔔 AI response:', { text: response.text?.substring(0, 50), reminder: response.reminder });
         conversationHistory.push({ role: 'assistant', content: response.text });
-        
-        // If AI didn't set a reminder but we have a task, use smart defaults
-        console.log('🔔 Checking if default reminder needed. AI reminder:', response.reminder, 'currentTask:', currentTask);
-        if (!response.reminder && currentTask) {
-            const defaultReminder = getDefaultReminder(userInput, currentTask);
-            console.log('🔔 Default reminder generated:', defaultReminder);
-            if (defaultReminder) {
-                console.log('🔔 Using default reminder (AI did not set one):', defaultReminder);
-                return {
-                    text: response.text,
-                    reminder: defaultReminder,
-                };
-            }
+
+        // Store task if AI set a reminder (indicating it detected a task)
+        if (response.reminder) {
+            currentTask = userInput;
+        } else {
+            currentTask = null;
         }
-        
-        console.log('🔔 Returning response with reminder:', response.reminder);
+
         return response;
     } catch (error) {
         console.error("AI API error in getInitialResponse:", error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        return { 
-            text: `I'm having trouble connecting: ${errorMessage}. Please check your API key in Settings.`, 
-            reminder: null 
+        return {
+            text: `I'm having trouble connecting: ${errorMessage}. Please check your API key in Settings.`,
+            reminder: null
         };
     }
 };
 
 export const continueChat = async (message: string): Promise<AIResponse> => {
-    const extractedTask = extractTask(message);
-    if (extractedTask && (!currentTask || extractedTask.length > 10)) {
-        currentTask = extractedTask;
-        console.log('Updated current task to:', currentTask);
-    }
-    
     conversationHistory.push({ role: 'user', content: message });
-    
+
     try {
         const response = await callAI(conversationHistory);
         conversationHistory.push({ role: 'assistant', content: response.text });
-        
-        // Check if user explicitly requested a reminder in this message
-        const explicitTime = extractTimeFromMessage(message);
-        if (!response.reminder && explicitTime) {
-            console.log('📋 User requested explicit reminder time:', explicitTime);
-            return {
-                text: response.text,
-                reminder: {
-                    type: 'one-time',
-                    minutes: explicitTime,
-                    reason: 'User requested specific time',
-                },
-            };
+
+        // Update currentTask if AI set a reminder (indicating it detected a new task)
+        if (response.reminder) {
+            currentTask = message;
+            console.log('Updated current task to:', currentTask);
         }
-        
+
         return response;
     } catch (error) {
         console.error("AI API error in continueChat:", error);
-        return { 
-            text: "I'm having trouble responding right now. Please try again in a moment.", 
-            reminder: null 
+        return {
+            text: "I'm having trouble responding right now. Please try again in a moment.",
+            reminder: null
         };
     }
 };
 
 export const generateCheckinMessage = async (fallbackTask: string): Promise<string> => {
     const taskToUse = currentTask || fallbackTask;
-    
-    if (isGreeting(taskToUse)) {
+
+    // If no real task is set, use a generic check-in
+    if (!taskToUse) {
         return "Hey! Just checking in. How's your focus going? ✨";
     }
-    
+
     const prompt = `Generate a short, friendly check-in notification (under 15 words) for someone working on: "${taskToUse}". Don't use special formatting.`;
-    
+
     try {
         const { provider, apiKey } = getConfig();
         const model = getModel(provider, apiKey);
-        
+
         const result = await generateText({
             model,
             messages: [{ role: 'user', content: prompt }],
         });
-        
+
         return result.text || "Just checking in! How's your progress? ✨";
     } catch (error) {
         console.error("AI API error in generateCheckinMessage:", error);
@@ -393,13 +279,13 @@ export const extractTimeFromMessage = (message: string): number | null => {
     // This is now handled by the AI via tool calling
     // But keep for fallback/manual override scenarios
     const MAX_INTERVAL_MINUTES = 180;
-    
+
     const secondsPatterns = [
         /(?:remind|check|notify|ping|alert).+?(?:in|after)\s+(\d+)\s*(?:sec|second|secs|seconds)/i,
         /(?:in|after)\s+(\d+)\s*(?:sec|second|secs|seconds)/i,
         /(\d+)\s*(?:sec|second|secs|seconds)\s*(?:from now|later|timer|reminder)/i,
     ];
-    
+
     for (const pattern of secondsPatterns) {
         const match = message.match(pattern);
         if (match && match[1]) {
@@ -409,13 +295,13 @@ export const extractTimeFromMessage = (message: string): number | null => {
             }
         }
     }
-    
+
     const minutePatterns = [
         /(?:remind|check|notify|ping|alert).+?(?:in|after)\s+(\d+)\s*(?:min|minute|mins|minutes)/i,
         /(?:in|after)\s+(\d+)\s*(?:min|minute|mins|minutes)/i,
         /(\d+)\s*(?:min|minute|mins|minutes)\s*(?:from now|later|timer|reminder)/i,
     ];
-    
+
     for (const pattern of minutePatterns) {
         const match = message.match(pattern);
         if (match && match[1]) {
@@ -425,6 +311,6 @@ export const extractTimeFromMessage = (message: string): number | null => {
             }
         }
     }
-    
+
     return null;
 };
