@@ -43,10 +43,20 @@ const systemInstruction = `You are Focus Fairy, a gentle and playful assistant t
 - ONLY use setReminder when the user explicitly states a task they want to work on.
 - NEVER set reminders for: greetings, questions, off-topic chat, or vague messages.
 - If unsure whether something is a task, ask for clarification instead of setting a reminder.
-- For explicit time requests, use one-time with exact time.
-- For deep work/study, use recurring 25-45 minutes.
-- For quick tasks, use one-time 10-15 minutes.
-- For general work, use recurring 30 minutes.`;
+
+**FOCUS SESSION TIMING** (IMPORTANT):
+- When a user mentions a duration (e.g., "for the next hour", "for 2 hours", "for 30 minutes"), set up RECURRING check-ins to keep them accountable throughout.
+- Calculate check-in intervals based on total duration:
+  - Under 30 min total: check-in every 10 minutes (recurring)
+  - 30-60 min total: check-in every 15-20 minutes (recurring)
+  - 1-2 hours total: check-in every 20-25 minutes (recurring)
+  - Over 2 hours: check-in every 25-30 minutes (recurring)
+- For tasks WITHOUT a specified duration, use sensible defaults:
+  - Deep work/study: recurring every 25 minutes
+  - Quick tasks: one-time at 10-15 minutes
+  - General work: recurring every 20-25 minutes
+- Only use 'one-time' when user explicitly asks for a SINGLE reminder at a specific time (e.g., "remind me in exactly 1 hour").
+- Your response should mention you'll check in periodically, NOT just remind them at the end.`;
 
 const getConfig = (): AIConfig => {
     const provider = (localStorage.getItem('ai_provider') as AIProvider) || 'gemini';
@@ -109,9 +119,10 @@ const reminderToolSchema = z.object({
 type ReminderToolInput = z.infer<typeof reminderToolSchema>;
 
 const setReminderTool = tool({
-    description: `Set a reminder or check-in for the user's focus session. 
-Use 'one-time' for specific requests like "remind me in 5 minutes" or quick tasks.
-Use 'recurring' for deep work sessions that need periodic check-ins.`,
+    description: `Set check-ins for the user's focus session.
+Use 'recurring' (default for focus sessions) to provide periodic check-ins throughout their work time - this keeps users accountable.
+Use 'one-time' ONLY when user explicitly asks for a single reminder at a specific time (e.g., "remind me in exactly 30 min").
+For focus sessions with a duration (e.g., "work for 1 hour"), ALWAYS use recurring with appropriate intervals.`,
     inputSchema: reminderToolSchema,
 });
 

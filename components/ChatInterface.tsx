@@ -121,9 +121,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
                             About Focus Fairy
                         </h3>
                         <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-                            A gentle focus companion that checks in on your progress.
+                            A gentle focus companion that helps you focus on your tasks by checking in on your progress.
                             <strong> Bring your own API key</strong> (Gemini, OpenAI, etc).
-                            Chats are <strong>ephemeral</strong> and not saved anywhere.
+                            Chats are ephemeral and not saved anywhere. You will lose the chat if the page is refreshed or closed.
                             Keep this tab open for reliable check-in notifications.
                         </p>
                     </div>
