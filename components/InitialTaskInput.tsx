@@ -9,6 +9,9 @@ interface InitialTaskInputProps {
 const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoading, onApiKeyClick }) => {
     const [task, setTask] = useState('');
 
+    // Character limit for input
+    const MAX_INPUT_CHARS = 280;
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (task.trim() && !isLoading) {
@@ -111,36 +114,47 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                 </div>
 
                 {/* Input Form */}
-                <form
-                    onSubmit={handleSubmit}
-                    className="flex items-center gap-3 w-full"
-                    style={{ paddingLeft: '100px' }}
-                >
-                    <input
-                        type="text"
-                        value={task}
-                        onChange={(e) => setTask(e.target.value)}
-                        placeholder=""
-                        className="input-field flex-1"
-                        disabled={isLoading}
-                    />
-                    <button
-                        type="submit"
-                        className="btn-send"
-                        disabled={isLoading || !task.trim()}
+                <div className="w-full" style={{ paddingLeft: '140px' }}>
+                    <form
+                        onSubmit={handleSubmit}
+                        className="flex items-center gap-3 w-full"
                     >
-                        {isLoading ? (
-                            <div
-                                className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
-                                style={{ borderColor: 'var(--text-dark)', borderTopColor: 'transparent' }}
-                            />
-                        ) : (
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                        )}
-                    </button>
-                </form>
+                        <input
+                            type="text"
+                            value={task}
+                            onChange={(e) => {
+                                if (e.target.value.length <= MAX_INPUT_CHARS) {
+                                    setTask(e.target.value);
+                                }
+                            }}
+                            placeholder=""
+                            className="input-field flex-1"
+                            disabled={isLoading}
+                        />
+                        <button
+                            type="submit"
+                            className="btn-send"
+                            disabled={isLoading || !task.trim()}
+                        >
+                            {isLoading ? (
+                                <div
+                                    className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
+                                    style={{ borderColor: 'var(--text-dark)', borderTopColor: 'transparent' }}
+                                />
+                            ) : (
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            )}
+                        </button>
+                    </form>
+                    <p className="text-xs mt-1 text-right" style={{
+                        color: task.length >= MAX_INPUT_CHARS ? 'var(--accent-pink)' : 'var(--text-muted)',
+                        opacity: task ? 1 : 0
+                    }}>
+                        {task.length}/{MAX_INPUT_CHARS}
+                    </p>
+                </div>
             </div>
         </div>
     );

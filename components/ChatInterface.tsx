@@ -13,8 +13,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
     const [inputMessage, setInputMessage] = useState('');
     const [viewOffset, setViewOffset] = useState(0); // 0 = latest, negative = older
 
-    // Word limit for input
-    const MAX_INPUT_WORDS = 100;
+    // Character limit for input
+    const MAX_INPUT_CHARS = 280;
 
     // Separate user and AI messages for easier pairing
     const userMessages = messages.filter(m => m.sender === 'user');
@@ -35,13 +35,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const text = e.target.value;
-        const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-        if (wordCount <= MAX_INPUT_WORDS) {
+        if (text.length <= MAX_INPUT_CHARS) {
             setInputMessage(text);
         }
     };
 
-    const currentWordCount = inputMessage.trim().split(/\s+/).filter(Boolean).length;
+    const currentCharCount = inputMessage.length;
 
     // Navigate to earlier messages (scroll up = more negative offset)
     const scrollUp = () => {
@@ -208,7 +207,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
                 </div>
 
                 {/* Input Form */}
-                <div className="w-full input-form-container" style={{ paddingLeft: '140px', paddingRight: '40px' }}>
+                <div className="w-full" style={{ paddingLeft: '140px' }}>
                     <form
                         onSubmit={handleSendMessage}
                         className="flex items-center gap-3 w-full"
@@ -221,21 +220,29 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
                             className="input-field flex-1"
                             disabled={isLoading}
                         />
-                        {/* <button
+                        <button
                             type="submit"
                             className="btn-send"
                             disabled={isLoading || !inputMessage.trim()}
                         >
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                        </button> */}
+                            {isLoading ? (
+                                <div
+                                    className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
+                                    style={{ borderColor: 'var(--text-dark)', borderTopColor: 'transparent' }}
+                                />
+                            ) : (
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            )}
+                        </button>
                     </form>
-                    {inputMessage && (
-                        <p className="text-xs mt-0 text-right" style={{ color: currentWordCount >= MAX_INPUT_WORDS ? 'var(--accent-pink)' : 'var(--text-muted)' }}>
-                            {currentWordCount}/{MAX_INPUT_WORDS} words
-                        </p>
-                    )}
+                    <p className="text-xs mt-1 text-right" style={{
+                        color: currentCharCount >= MAX_INPUT_CHARS ? 'var(--accent-pink)' : 'var(--text-muted)',
+                        opacity: inputMessage ? 1 : 0
+                    }}>
+                        {currentCharCount}/{MAX_INPUT_CHARS}
+                    </p>
                 </div>
             </div>
         </div>
