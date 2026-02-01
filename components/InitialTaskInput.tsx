@@ -25,7 +25,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
             style={{ backgroundColor: 'var(--bg-white)' }}
         >
             {/* Info Tooltip and Settings Button */}
-            <div className="absolute top-6 right-6 flex items-center gap-3">
+            <div className="absolute top-4 right-4 sm:top-6 sm:right-6 flex items-center gap-2 sm:gap-3">
                 {/* Info Tooltip */}
                 <div className="relative group">
                     <button
@@ -44,7 +44,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
 
                     {/* Tooltip Content */}
                     <div
-                        className="absolute right-0 top-10 w-72 p-4 rounded-xl shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50"
+                        className="absolute right-0 top-10 w-64 sm:w-72 p-3 sm:p-4 rounded-xl shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50"
                         style={{
                             backgroundColor: 'var(--bg-white)',
                             border: '1px solid var(--border-light)'
@@ -75,21 +75,21 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
             <div className="flex flex-col items-center w-full" style={{ maxWidth: '600px' }}>
                 {/* Title */}
                 <h1
-                    className="font-title text-4xl font-semibold italic mb-10"
+                    className="font-title text-3xl sm:text-4xl font-semibold italic mb-6 sm:mb-10"
                     style={{ color: 'var(--text-dark)' }}
                 >
                     Focus Fairy
                 </h1>
 
                 {/* Fairy and Speech Bubble Container */}
-                <div className="flex items-center w-full mb-8 gap-4">
+                <div className="flex items-center w-full mb-8 gap-2 sm:gap-4">
                     {/* Fairy */}
-                    <div className="fairy-container animate-float">
+                    <div className="fairy-container animate-float flex-shrink-0">
                         <img src="/fairy.svg" alt="Focus Fairy" />
                     </div>
 
                     {/* AI Speech Bubble */}
-                    <div className="speech-bubble-ai animate-fadeIn">
+                    <div className="speech-bubble-ai animate-fadeIn flex-1 min-w-0">
                         <p
                             className="text-sm leading-relaxed"
                             style={{ color: 'var(--text-dark)' }}
@@ -99,7 +99,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                     </div>
 
                     {/* Navigation Arrows */}
-                    <div className="nav-arrows">
+                    <div className="nav-arrows flex-shrink-0">
                         <div className="nav-arrow" style={{ opacity: 0.3 }}>
                             <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M1 6L6 1L11 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -114,10 +114,10 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                 </div>
 
                 {/* Input Form */}
-                <div className="w-full" style={{ paddingLeft: '140px' }}>
+                <div className="w-full input-form-container" style={{ paddingLeft: '140px' }}>
                     <form
                         onSubmit={handleSubmit}
-                        className="flex items-center gap-3 w-full"
+                        className="flex items-center gap-2 sm:gap-3 w-full"
                     >
                         <input
                             type="text"

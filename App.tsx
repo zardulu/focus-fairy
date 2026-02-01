@@ -307,7 +307,7 @@ const App: React.FC = () => {
                     onClick={() => setShowApiKeyModal(false)}
                 >
                     <div
-                        className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl"
+                        className="bg-white rounded-2xl p-4 sm:p-6 max-w-md w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <h2 className="font-title text-2xl font-semibold mb-4" style={{ color: 'var(--text-dark)' }}>

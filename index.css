@@ -271,6 +271,7 @@ body {
   justify-content: center;
 }
 
+
 .chat-pair-container {
   display: flex;
   flex-direction: column;
@@ -307,6 +308,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0;
+
 }
 
 /* Nav arrows - fixed position in center-right of chat view */
@@ -339,41 +341,104 @@ body {
 
   /* Smaller fairy on mobile */
   .fairy-container {
-    width: 80px;
-    height: 80px;
+    width: 70px;
+    height: 70px;
   }
 
   .fairy-container img {
-    width: 90px;
-    height: 90px;
-    margin-left: -10px;
+    width: 80px;
+    height: 80px;
+    margin-left: -8px;
   }
 
-  /* Smaller speech bubble */
+  /* Smaller speech bubble - align with right edge of input field */
   .speech-bubble-ai {
-    padding: 16px 20px;
-    max-width: 280px;
+    padding: 12px 16px;
+    max-width: calc(100vw - 160px); /* Account for fairy, padding, and button area */
+    min-width: 0;
   }
 
-  /* Adjust nav arrows */
-  .ai-message-row .nav-arrows {
-    padding-right: 4px;
+  .speech-bubble-ai p {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* Adjust nav arrows - align with button center */
+  .chat-view-wrapper .nav-arrows {
+    right: 32px; /* 20px padding + 20px (half button) - 10px (approx half arrows) */
+  }
+
+  /* Reduce gap between fairy and bubble on mobile */
+  .ai-message-row {
+    margin-left: -6px;
   }
 
   /* Reduce chat wrapper height */
   .chat-view-wrapper {
-    height: 220px;
+    height: 200px;
   }
 
-  /* User message row - less padding on mobile */
+  /* User message row - align with right edge of input field (before button) */
   .user-message-row {
-    padding-left: 80px;
-    padding-right: 20px;
+    padding-left: 20px;
+    padding-right: 68px; /* 20px padding + 40px button + 8px gap */
   }
 
-  /* Input form - less padding on mobile */
+  .user-message-text {
+    font-size: 13px;
+    max-height: 3.6em;
+  }
+
+  /* Input form - align right edge with send button on mobile */
   .input-form-container {
-    padding-left: 80px !important;
+    padding-left: 20px !important;
     padding-right: 20px !important;
+  }
+
+  /* Make input field smaller on mobile */
+  .input-field {
+    padding: 12px 16px;
+    font-size: 16px; /* Prevent zoom on iOS */
+  }
+
+  /* Adjust send button size */
+  .btn-send {
+    width: 40px;
+    height: 40px;
+  }
+
+  /* Smaller nav arrows */
+  .nav-arrow {
+    width: 14px;
+    height: 8px;
+  }
+
+  /* Info tooltip - smaller width on mobile */
+  .group-hover\:visible + div,
+  .group:hover .absolute {
+    width: calc(100vw - 40px) !important;
+    max-width: 280px;
+  }
+}
+
+/* Extra small screens */
+@media (max-width: 380px) {
+  .fairy-container {
+    width: 60px;
+    height: 60px;
+  }
+
+  .fairy-container img {
+    width: 70px;
+    height: 70px;
+  }
+
+  .speech-bubble-ai {
+    padding: 10px 14px;
+    max-width: calc(100vw - 120px);
+  }
+
+  .speech-bubble-ai p {
+    font-size: 12px;
   }
 }

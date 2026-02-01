@@ -91,7 +91,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
             style={{ backgroundColor: 'var(--bg-white)' }}
         >
             {/* Info Tooltip and Settings Button */}
-            <div className="absolute top-6 right-6 flex items-center gap-3">
+            <div className="absolute top-4 right-4 sm:top-6 sm:right-6 flex items-center gap-2 sm:gap-3">
                 {/* Info Tooltip */}
                 <div className="relative group">
                     <button
@@ -110,7 +110,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
 
                     {/* Tooltip Content */}
                     <div
-                        className="absolute right-0 top-10 w-72 p-4 rounded-xl shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50"
+                        className="absolute right-0 top-10 w-64 sm:w-72 p-3 sm:p-4 rounded-xl shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50"
                         style={{
                             backgroundColor: 'var(--bg-white)',
                             border: '1px solid var(--border-light)'
@@ -141,7 +141,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
             <div className="flex flex-col items-center w-full" style={{ maxWidth: '600px' }}>
                 {/* Title */}
                 <h1
-                    className="font-title text-4xl font-semibold italic mb-0"
+                    className="font-title text-3xl sm:text-4xl font-semibold italic mb-0"
                     style={{ color: 'var(--text-dark)' }}
                 >
                     Focus Fairy
@@ -163,16 +163,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
                         ) : null}
 
                         {/* AI Message at Bottom - with fairy and bubble */}
-                        <div className="ai-message-row">
-                            <div className="fairy-container animate-float">
+                        <div className="ai-message-row gap-0 sm:gap-0">
+                            <div className="fairy-container animate-float flex-shrink-0">
                                 <img src="/fairy.svg" alt="Focus Fairy" />
                             </div>
                             {showTypingIndicator ? (
-                                <div className="speech-bubble-ai animate-fadeIn">
+                                <div className="speech-bubble-ai animate-fadeIn flex-1 min-w-0">
                                     <AITypingIndicator />
                                 </div>
                             ) : (
-                                <div className="speech-bubble-ai animate-fadeIn" key={`ai-${currentPairIndex}`}>
+                                <div className="speech-bubble-ai animate-fadeIn flex-1 min-w-0" key={`ai-${currentPairIndex}`}>
                                     <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-dark)' }}>
                                         {aiMessage?.text || "Hi! I'm here to help you stay focused ✨ Tell me what you're working on, and I'll guide you through it step by step."}
                                     </p>
@@ -207,10 +207,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
                 </div>
 
                 {/* Input Form */}
-                <div className="w-full" style={{ paddingLeft: '140px' }}>
+                <div className="w-full input-form-container" style={{ paddingLeft: '140px' }}>
                     <form
                         onSubmit={handleSendMessage}
-                        className="flex items-center gap-3 w-full"
+                        className="flex items-center gap-2 sm:gap-3 w-full"
                     >
                         <input
                             type="text"
