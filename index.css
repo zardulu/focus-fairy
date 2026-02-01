@@ -308,7 +308,6 @@ body {
   display: flex;
   align-items: center;
   gap: 0;
-
 }
 
 /* Nav arrows - fixed position in center-right of chat view */
@@ -373,9 +372,20 @@ body {
     margin-left: -6px;
   }
 
-  /* Reduce chat wrapper height */
+  /* Reduce chat wrapper height - but not for InitialTaskInput which uses auto height */
   .chat-view-wrapper {
     height: 200px;
+  }
+
+  /* InitialTaskInput specific - add side padding on mobile */
+  .chat-view-wrapper[style*="height: auto"] {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  /* InitialTaskInput - adjust nav arrows for the padded container */
+  .chat-view-wrapper[style*="height: auto"] .nav-arrows {
+    right: 12px;
   }
 
   /* User message row - align with right edge of input field (before button) */

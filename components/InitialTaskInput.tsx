@@ -82,24 +82,26 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                 </h1>
 
                 {/* Fairy and Speech Bubble Container */}
-                <div className="flex items-center w-full mb-8 gap-2 sm:gap-4">
-                    {/* Fairy */}
-                    <div className="fairy-container animate-float flex-shrink-0">
-                        <img src="/fairy.svg" alt="Focus Fairy" />
-                    </div>
-
-                    {/* AI Speech Bubble */}
-                    <div className="speech-bubble-ai animate-fadeIn flex-1 min-w-0">
-                        <p
-                            className="text-sm leading-relaxed"
-                            style={{ color: 'var(--text-dark)' }}
-                        >
-                            Hi! I'm your Focus Fairy ✨ What task would you like to focus on today? I'll help break it down into manageable steps.
-                        </p>
+                <div className="chat-view-wrapper w-full mb-8" style={{ height: 'auto', minHeight: '120px' }}>
+                    <div className="chat-pair-container">
+                        {/* AI Message - with fairy and bubble */}
+                        <div className="ai-message-row">
+                            <div className="fairy-container animate-float flex-shrink-0">
+                                <img src="/fairy.svg" alt="Focus Fairy" />
+                            </div>
+                            <div className="speech-bubble-ai animate-fadeIn flex-1 min-w-0">
+                                <p
+                                    className="text-sm leading-relaxed"
+                                    style={{ color: 'var(--text-dark)' }}
+                                >
+                                    Hi! I'm your Focus Fairy ✨ What task would you like to focus on today? <span className="hidden sm:inline">I'll help break it down into manageable steps.</span>
+                                </p>
+                            </div>
+                        </div>
                     </div>
 
                     {/* Navigation Arrows */}
-                    <div className="nav-arrows flex-shrink-0">
+                    <div className="nav-arrows">
                         <div className="nav-arrow" style={{ opacity: 0.3 }}>
                             <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M1 6L6 1L11 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
