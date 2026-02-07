@@ -27,6 +27,10 @@ export interface AIResponse {
     reminder: ReminderConfig | null;
 }
 
+/** User-facing message when no API key is saved. Shown in chat and check-in errors. */
+export const NO_API_KEY_MESSAGE =
+    "You need an API key to use the app. Go to Settings, choose your AI provider, and paste your API key there.";
+
 const systemInstruction = `You are Focus Fairy, a gentle and playful assistant that helps users stay focused on their tasks.
 
 **RULES**:
@@ -65,7 +69,7 @@ const getConfig = (): AIConfig => {
     console.log('AI Config:', { provider, hasKey: !!apiKey });
 
     if (!apiKey) {
-        throw new Error(`No API key found for ${provider}. Please add your API key.`);
+        throw new Error(`No API key found for ${provider}.`);
     }
 
     return { provider, apiKey };
@@ -232,9 +236,9 @@ export const getInitialResponse = async (userInput: string): Promise<AIResponse>
         return response;
     } catch (error) {
         console.error("AI API error in getInitialResponse:", error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        const isNoApiKey = error instanceof Error && error.message.includes('No API key');
         return {
-            text: `I'm having trouble connecting: ${errorMessage}. Please check your API key in Settings.`,
+            text: isNoApiKey ? NO_API_KEY_MESSAGE : `I'm having trouble connecting. Go to Settings (gear icon) and check your API key, then try again.`,
             reminder: null
         };
     }
@@ -256,8 +260,9 @@ export const continueChat = async (message: string): Promise<AIResponse> => {
         return response;
     } catch (error) {
         console.error("AI API error in continueChat:", error);
+        const isNoApiKey = error instanceof Error && error.message.includes('No API key');
         return {
-            text: "I'm having trouble responding right now. Please try again in a moment.",
+            text: isNoApiKey ? NO_API_KEY_MESSAGE : "I'm having trouble responding right now. Let's try again in a moment.",
             reminder: null
         };
     }
@@ -285,6 +290,9 @@ export const generateCheckinMessage = async (fallbackTask: string): Promise<stri
         return result.text || "Just checking in! How's your progress? ✨";
     } catch (error) {
         console.error("AI API error in generateCheckinMessage:", error);
+        if (error instanceof Error && error.message.includes('No API key')) {
+            throw error;
+        }
         return `How's your progress going? Keep it up! ✨`;
     }
 };
