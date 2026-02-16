@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import InitialTaskInput from './components/InitialTaskInput';
 import ChatInterface from './components/ChatInterface';
 import { ChatMessage } from './types';
-import { initializeChat, getInitialResponse, continueChat, generateCheckinMessage, getCurrentTask, AIProvider, ReminderConfig } from './services/aiService';
+import { initializeChat, generateCheckinMessage, getCurrentTask, AIProvider, ReminderConfig, streamInitialResponse, streamContinueChat } from './services/aiService';
 
 const DEFAULT_CHECKIN_MINUTES = 15;
 
@@ -17,6 +17,8 @@ const App: React.FC = () => {
     const [task, setTask] = useState<string | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [streamingText, setStreamingText] = useState<string>('');
+    const [streamingComplete, setStreamingComplete] = useState<boolean>(false);
     const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
     const [showApiKeyModal, setShowApiKeyModal] = useState<boolean>(false);
     const [selectedProvider, setSelectedProvider] = useState<AIProvider>('gemini');
@@ -29,6 +31,21 @@ const App: React.FC = () => {
     const [activeTimer, setActiveTimer] = useState<number | null>(null); // Track active timer minutes
     const workerRef = useRef<Worker | null>(null);
     const currentTaskRef = useRef<string>(''); // Store current task for worker callback
+
+    const appendLocalAiMessageWithStreaming = useCallback(async (text: string) => {
+        setStreamingText('');
+        setStreamingComplete(false);
+
+        for (let i = 0; i < text.length; i++) {
+            setStreamingText(text.slice(0, i + 1));
+            await new Promise(resolve => setTimeout(resolve, 15));
+        }
+
+        setStreamingComplete(true);
+        setMessages(prev => [...prev, { sender: 'ai', text }]);
+        setStreamingText('');
+        setStreamingComplete(false);
+    }, []);
 
     useEffect(() => {
         // Load saved provider and keys
@@ -230,14 +247,27 @@ const App: React.FC = () => {
         // Immediately show the user's message before waiting for AI response
         setMessages([{ sender: 'user', text: newTask }]);
         setIsLoading(true);
+        setStreamingText('');
+        setStreamingComplete(false);
 
         try {
             initializeChat();
-            const { text, reminder } = await getInitialResponse(newTask);
+            
+            // Stream text with callback for real-time updates
+            const onChunk = (text: string) => {
+                setStreamingText(text);
+            };
+            
+            const { text, reminder } = await streamInitialResponse(newTask, onChunk);
             console.log('🔔 getInitialResponse returned:', { text: text.substring(0, 50), reminder });
 
-            // Add the AI response to the existing user message
+            // Mark streaming as complete (keeps showing last text until we add message)
+            setStreamingComplete(true);
+            
+            // Now add the final message
             setMessages(prev => [...prev, { sender: 'ai', text }]);
+            setStreamingText('');
+            setStreamingComplete(false);
 
             // Let AI decide the reminder configuration via tool calling
             console.log('🔔 Calling handleReminderConfig with reminder:', reminder);
@@ -245,8 +275,7 @@ const App: React.FC = () => {
 
         } catch (error) {
             console.error("Failed to initialize chat:", error);
-            // Add error message to the existing user message
-            setMessages(prev => [...prev, { sender: 'ai', text: "Sorry, I couldn't connect. Please check your API key and refresh." }]);
+            await appendLocalAiMessageWithStreaming("To use Focus Fairy, please add your own API key in Settings. Don't worry, you can use free-tier keys!");
 
             // Fallback: start default recurring check-in on error
             if (Notification.permission === 'granted') {
@@ -263,17 +292,31 @@ const App: React.FC = () => {
         const newMessages: ChatMessage[] = [...messages, { sender: 'user', text: userMessage }];
         setMessages(newMessages);
         setIsLoading(true);
+        setStreamingText('');
+        setStreamingComplete(false);
 
         try {
-            const { text, reminder } = await continueChat(userMessage);
+            // Stream text with callback for real-time updates
+            const onChunk = (text: string) => {
+                setStreamingText(text);
+            };
+            
+            const { text, reminder } = await streamContinueChat(userMessage, onChunk);
+            
+            // Mark streaming as complete (keeps showing last text until we add message)
+            setStreamingComplete(true);
+            
+            // Now add the final message
             setMessages(prev => [...prev, { sender: 'ai', text }]);
+            setStreamingText('');
+            setStreamingComplete(false);
 
             // Let AI decide the reminder configuration via tool calling
             handleReminderConfig(reminder, task);
 
         } catch (error) {
             console.error("Failed to send message:", error);
-            setMessages(prev => [...prev, { sender: 'ai', text: "I'm having trouble responding right now. Let's try again in a moment." }]);
+            await appendLocalAiMessageWithStreaming("I'm having trouble responding right now. Let's try again in a moment.");
         } finally {
             setIsLoading(false);
         }
@@ -289,6 +332,8 @@ const App: React.FC = () => {
                     messages={messages}
                     onSendMessage={handleSendMessage}
                     isLoading={isLoading}
+                    streamingText={streamingText}
+                    streamingComplete={streamingComplete}
                     onApiKeyClick={() => setShowApiKeyModal(true)}
                 />
             ) : (

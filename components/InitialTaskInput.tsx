@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface InitialTaskInputProps {
     onTaskSubmit: (task: string) => void;
@@ -8,9 +8,29 @@ interface InitialTaskInputProps {
 
 const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoading, onApiKeyClick }) => {
     const [task, setTask] = useState('');
+    const [introText, setIntroText] = useState('');
 
     // Character limit for input
     const MAX_INPUT_CHARS = 280;
+    const INTRO_MESSAGE = "Hi! I'm your Focus Fairy ✨ What task would you like to focus on today? I'll help break it down into manageable steps.";
+
+    useEffect(() => {
+        let isCancelled = false;
+
+        const streamIntroMessage = async () => {
+            for (let i = 0; i < INTRO_MESSAGE.length; i++) {
+                if (isCancelled) return;
+                setIntroText(INTRO_MESSAGE.slice(0, i + 1));
+                await new Promise(resolve => setTimeout(resolve, 15));
+            }
+        };
+
+        void streamIntroMessage();
+
+        return () => {
+            isCancelled = true;
+        };
+    }, []);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -94,7 +114,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                                     className="text-sm leading-relaxed"
                                     style={{ color: 'var(--text-dark)' }}
                                 >
-                                    Hi! I'm your Focus Fairy ✨ What task would you like to focus on today? <span className="hidden sm:inline">I'll help break it down into manageable steps.</span>
+                                    {introText}
                                 </p>
                             </div>
                         </div>

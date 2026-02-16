@@ -6,10 +6,12 @@ interface ChatInterfaceProps {
     messages: ChatMessage[];
     onSendMessage: (message: string) => void;
     isLoading: boolean;
+    streamingText?: string;
+    streamingComplete?: boolean;
     onApiKeyClick?: () => void;
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMessage, isLoading, onApiKeyClick }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMessage, isLoading, streamingText = '', streamingComplete = false, onApiKeyClick }) => {
     const [inputMessage, setInputMessage] = useState('');
     const [viewOffset, setViewOffset] = useState(0); // 0 = latest, negative = older
 
@@ -77,13 +79,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
     // For AI messages: at the latest view (offset 0), always show the most recent AI message
     // This handles check-in messages that don't have a corresponding user message
     const isViewingLatest = viewOffset === 0;
-    const aiMessage = isViewingLatest
-        ? aiMessages[aiMessages.length - 1] || null  // Always show latest AI message
-        : aiMessages[currentPairIndex] || null;      // When scrolling back, use paired index
+    
+    // Show typing indicator when waiting for AI response, but not when streaming
+    const isStreaming = isLoading && streamingText.length > 0;
+    const showStreamingText = isStreaming || streamingComplete;
+    const showLiveAiText = isViewingLatest && showStreamingText;
+    
+    // Get AI message - but when streaming on latest view, don't show the last message to avoid duplication
+    const aiMessage = showLiveAiText
+        ? null  // Don't show previous AI message while streaming
+        : isViewingLatest
+            ? aiMessages[aiMessages.length - 1] || null
+            : aiMessages[currentPairIndex] || null;
 
-    // Show typing indicator when waiting for AI response
-    const waitingForAiResponse = hasUserMessages && userMessage && !aiMessage;
-    const showTypingIndicator = (isLoading && isViewingLatest) || waitingForAiResponse;
+    const displayedAiText = showLiveAiText
+        ? streamingText
+        : aiMessage?.text || "Hi! I'm here to help you stay focused ✨ Tell me what you're working on, and I'll guide you through it step by step.";
+
+    const waitingForAiResponse = hasUserMessages && userMessage && !aiMessage && !showLiveAiText;
+    const showTypingIndicator = ((isLoading && isViewingLatest) || waitingForAiResponse) && !showLiveAiText;
 
     return (
         <div
@@ -172,9 +186,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
                                     <AITypingIndicator />
                                 </div>
                             ) : (
-                                <div className="speech-bubble-ai animate-fadeIn flex-1 min-w-0" key={`ai-${currentPairIndex}`}>
+                                <div className="speech-bubble-ai animate-fadeIn flex-1 min-w-0">
                                     <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-dark)' }}>
-                                        {aiMessage?.text || "Hi! I'm here to help you stay focused ✨ Tell me what you're working on, and I'll guide you through it step by step."}
+                                        {displayedAiText}
                                     </p>
                                 </div>
                             )}

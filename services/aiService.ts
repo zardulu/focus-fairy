@@ -1,7 +1,10 @@
-import { generateText, LanguageModel, tool } from 'ai';
+import { generateText, streamText, LanguageModel, tool } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import { z } from 'zod';
+
+// Streaming callback type
+export type StreamCallback = (chunk: string) => void;
 
 export type AIProvider = 'gemini' | 'openai' | 'openrouter' | 'groq';
 
@@ -265,6 +268,218 @@ export const continueChat = async (message: string): Promise<AIResponse> => {
             text: isNoApiKey ? NO_API_KEY_MESSAGE : "I'm having trouble responding right now. Let's try again in a moment.",
             reminder: null
         };
+    }
+};
+
+export const streamInitialResponse = async (
+    userInput: string,
+    onChunk: StreamCallback
+): Promise<AIResponse> => {
+    // Let the AI fully determine if this is a task, greeting, or off-topic message
+    conversationHistory = [{ role: 'user', content: userInput }];
+
+    const { provider, apiKey } = getConfig();
+    const model = getModel(provider, apiKey);
+
+    try {
+        const result = streamText({
+            model,
+            system: systemInstruction,
+            messages: conversationHistory.map(m => ({
+                role: m.role as 'user' | 'assistant',
+                content: m.content,
+            })),
+            tools: {
+                setReminder: setReminderTool,
+            },
+        });
+
+        // Collect all chunks first
+        let streamedText = '';
+        let chunkCount = 0;
+        
+        try {
+            for await (const chunk of result.textStream) {
+                chunkCount++;
+                streamedText += chunk;
+            }
+        } catch (streamError) {
+            console.error('🔔 Error consuming stream:', streamError);
+        }
+        
+        console.log('🔔 Total chunks received in service:', chunkCount);
+        console.log('🔔 Streamed text length:', streamedText.length);
+
+        // Now stream character by character with proper delays
+        for (let i = 0; i < streamedText.length; i++) {
+            onChunk(streamedText.slice(0, i + 1));
+            await new Promise(resolve => setTimeout(resolve, 15));
+        }
+
+        // Get the full response to extract tool calls
+        const fullResponse = await result.response;
+        const assistantMessage = fullResponse.messages.find(m => m.role === 'assistant');
+        
+        // Extract text from assistant message
+        let finalText = '';
+        if (assistantMessage) {
+            if (typeof assistantMessage.content === 'string') {
+                finalText = assistantMessage.content;
+            } else if (Array.isArray(assistantMessage.content)) {
+                finalText = assistantMessage.content
+                    .filter(item => item.type === 'text')
+                    .map(item => 'text' in item ? item.text : '')
+                    .join('');
+            }
+        }
+        
+        // If no chunks received, use full response text
+        if (chunkCount === 0 && finalText) {
+            console.log('🔔 No chunks received, using full response text');
+            for (let i = 0; i < finalText.length; i++) {
+                onChunk(finalText.slice(0, i + 1));
+                await new Promise(resolve => setTimeout(resolve, 15));
+            }
+            streamedText = finalText;
+        }
+        
+        // Extract reminder from tool calls
+        let reminder: ReminderConfig | null = null;
+        if (assistantMessage && Array.isArray(assistantMessage.content)) {
+            for (const item of assistantMessage.content) {
+                if (item.type === 'tool-call' && item.toolName === 'setReminder') {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const toolCall = item as any;
+                    if (toolCall.args && typeof toolCall.args === 'object') {
+                        reminder = {
+                            type: toolCall.args.type,
+                            minutes: toolCall.args.minutes,
+                            reason: toolCall.args.reason,
+                        };
+                    }
+                }
+            }
+        }
+
+        // Store in conversation history
+        conversationHistory.push({ role: 'assistant', content: streamedText || finalText });
+        
+        // Store task if AI set a reminder
+        if (reminder) {
+            currentTask = userInput;
+        } else {
+            currentTask = null;
+        }
+
+        return { text: streamedText || finalText, reminder };
+    } catch (error) {
+        console.error('Streaming error:', error);
+        throw error;
+    }
+};
+
+export const streamContinueChat = async (
+    message: string,
+    onChunk: StreamCallback
+): Promise<AIResponse> => {
+    conversationHistory.push({ role: 'user', content: message });
+
+    const { provider, apiKey } = getConfig();
+    const model = getModel(provider, apiKey);
+
+    try {
+        const result = streamText({
+            model,
+            system: systemInstruction,
+            messages: conversationHistory.map(m => ({
+                role: m.role as 'user' | 'assistant',
+                content: m.content,
+            })),
+            tools: {
+                setReminder: setReminderTool,
+            },
+        });
+
+        // Collect all chunks first
+        let streamedText = '';
+        let chunkCount = 0;
+        
+        try {
+            for await (const chunk of result.textStream) {
+                chunkCount++;
+                streamedText += chunk;
+            }
+        } catch (streamError) {
+            console.error('🔔 Error consuming stream:', streamError);
+        }
+        
+        console.log('🔔 Total chunks received in service:', chunkCount);
+        console.log('🔔 Streamed text length:', streamedText.length);
+
+        // Now stream character by character with proper delays
+        for (let i = 0; i < streamedText.length; i++) {
+            onChunk(streamedText.slice(0, i + 1));
+            await new Promise(resolve => setTimeout(resolve, 15));
+        }
+
+        // Get the full response to extract tool calls
+        const fullResponse = await result.response;
+        const assistantMessage = fullResponse.messages.find(m => m.role === 'assistant');
+        
+        // Extract text from assistant message
+        let finalText = '';
+        if (assistantMessage) {
+            if (typeof assistantMessage.content === 'string') {
+                finalText = assistantMessage.content;
+            } else if (Array.isArray(assistantMessage.content)) {
+                finalText = assistantMessage.content
+                    .filter(item => item.type === 'text')
+                    .map(item => 'text' in item ? item.text : '')
+                    .join('');
+            }
+        }
+        
+        // If no chunks received, use full response text
+        if (chunkCount === 0 && finalText) {
+            console.log('🔔 No chunks received, using full response text');
+            for (let i = 0; i < finalText.length; i++) {
+                onChunk(finalText.slice(0, i + 1));
+                await new Promise(resolve => setTimeout(resolve, 15));
+            }
+            streamedText = finalText;
+        }
+        
+        // Extract reminder from tool calls
+        let reminder: ReminderConfig | null = null;
+        if (assistantMessage && Array.isArray(assistantMessage.content)) {
+            for (const item of assistantMessage.content) {
+                if (item.type === 'tool-call' && item.toolName === 'setReminder') {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const toolCall = item as any;
+                    if (toolCall.args && typeof toolCall.args === 'object') {
+                        reminder = {
+                            type: toolCall.args.type,
+                            minutes: toolCall.args.minutes,
+                            reason: toolCall.args.reason,
+                        };
+                    }
+                }
+            }
+        }
+
+        // Store in conversation history
+        conversationHistory.push({ role: 'assistant', content: streamedText || finalText });
+        
+        // Update currentTask if AI set a reminder
+        if (reminder) {
+            currentTask = message;
+            console.log('Updated current task to:', currentTask);
+        }
+
+        return { text: streamedText || finalText, reminder };
+    } catch (error) {
+        console.error('Streaming error:', error);
+        throw error;
     }
 };
 
