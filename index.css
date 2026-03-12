@@ -91,7 +91,7 @@ body {
   font-size: 14px;
   outline: none;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 8px var(--accent-pink-light);
+  box-shadow: none;
 }
 
 .input-field:focus {

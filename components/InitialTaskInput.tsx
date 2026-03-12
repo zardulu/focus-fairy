@@ -12,7 +12,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
 
     // Character limit for input
     const MAX_INPUT_CHARS = 280;
-    const INTRO_MESSAGE = "Hi! I'm your Focus Fairy ✨ What task would you like to focus on today? I'll help break it down into manageable steps.";
+    const INTRO_MESSAGE = "Hi! I'm Focus Fairy! What task would you like to focus on today? I'll help break it down into manageable steps.";
 
     useEffect(() => {
         let isCancelled = false;
@@ -98,7 +98,8 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                     className="font-title text-3xl sm:text-4xl font-semibold italic mb-6 sm:mb-10"
                     style={{ color: 'var(--text-dark)' }}
                 >
-                    Focus Fairy
+                {/* Chat View Container */}
+                    Focus Fairy ✨
                 </h1>
 
                 {/* Fairy and Speech Bubble Container */}
@@ -120,19 +121,6 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                         </div>
                     </div>
 
-                    {/* Navigation Arrows */}
-                    <div className="nav-arrows">
-                        <div className="nav-arrow" style={{ opacity: 0.3 }}>
-                            <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M1 6L6 1L11 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                        </div>
-                        <div className="nav-arrow" style={{ opacity: 0.3 }}>
-                            <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M1 2L6 7L11 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                        </div>
-                    </div>
                 </div>
 
                 {/* Input Form */}
