@@ -58,11 +58,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
     const canScrollUp = userMessages.length > 1 && viewOffset > -(userMessages.length - 1);
     const canScrollDown = viewOffset < 0;
 
-    const AITypingIndicator = () => (
-        <div className="flex items-center gap-1.5 py-2">
-            <div className="typing-dot"></div>
-            <div className="typing-dot"></div>
-            <div className="typing-dot"></div>
+    const AISparkleIndicator = () => (
+        <div className="sparkle-loading" aria-label="Focus Fairy is thinking" role="status">
+            <span className="sparkle sparkle-large">✦</span>
+            <span className="sparkle sparkle-small">✦</span>
+            <span className="sparkle sparkle-medium">✦</span>
         </div>
     );
 
@@ -97,7 +97,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
         : aiMessage?.text || "Hi! I'm here to help you stay focused ✨ Tell me what you're working on, and I'll guide you through it step by step.";
 
     const waitingForAiResponse = hasUserMessages && userMessage && !aiMessage && !showLiveAiText;
-    const showTypingIndicator = ((isLoading && isViewingLatest) || waitingForAiResponse) && !showLiveAiText;
+    const showSparkleIndicator = ((isLoading && isViewingLatest) || waitingForAiResponse) && !showLiveAiText;
 
     return (
         <div
@@ -181,9 +181,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
                             <div className="fairy-container animate-float flex-shrink-0">
                                 <img src="/fairy.svg" alt="Focus Fairy" />
                             </div>
-                            {showTypingIndicator ? (
-                                <div className="speech-bubble-ai animate-fadeIn flex-1 min-w-0">
-                                    <AITypingIndicator />
+                            {showSparkleIndicator ? (
+                                <div className="sparkle-loading-wrapper animate-fadeIn flex-1 min-w-0">
+                                    <AISparkleIndicator />
                                 </div>
                             ) : (
                                 <div className="speech-bubble-ai animate-fadeIn flex-1 min-w-0">
