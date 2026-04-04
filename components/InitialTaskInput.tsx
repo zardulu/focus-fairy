@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import StreamingText from './StreamingText';
 
 interface InitialTaskInputProps {
     onTaskSubmit: (task: string) => void;
@@ -111,12 +112,12 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                                 <img src="/fairy.svg" alt="Focus Fairy" />
                             </div>
                             <div className="speech-bubble-ai animate-fadeIn flex-1 min-w-0">
-                                <p
+                                <StreamingText
+                                    text={introText}
+                                    particlesActive={introText.length > 0 && introText.length < INTRO_MESSAGE.length}
                                     className="text-sm leading-relaxed"
                                     style={{ color: 'var(--text-dark)' }}
-                                >
-                                    {introText}
-                                </p>
+                                />
                             </div>
                         </div>
                     </div>

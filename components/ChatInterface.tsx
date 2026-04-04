@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { ChatMessage } from '../types';
+import StreamingText from './StreamingText';
 
 interface ChatInterfaceProps {
     task: string;
@@ -99,6 +100,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
     const waitingForAiResponse = hasUserMessages && userMessage && !aiMessage && !showLiveAiText;
     const showSparkleIndicator = ((isLoading && isViewingLatest) || waitingForAiResponse) && !showLiveAiText;
 
+    const showStreamParticles =
+        isLoading && streamingText.length > 0 && !streamingComplete;
+
     return (
         <div
             className="min-h-screen w-full flex flex-col items-center justify-center p-4 relative"
@@ -187,9 +191,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, messages, onSendMes
                                 </div>
                             ) : (
                                 <div className="speech-bubble-ai animate-fadeIn flex-1 min-w-0">
-                                    <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-dark)' }}>
-                                        {displayedAiText}
-                                    </p>
+                                    <StreamingText
+                                        text={displayedAiText}
+                                        particlesActive={showStreamParticles && showLiveAiText}
+                                        className="text-sm leading-relaxed"
+                                        style={{ color: 'var(--text-dark)' }}
+                                    />
                                 </div>
                             )}
                         </div>
