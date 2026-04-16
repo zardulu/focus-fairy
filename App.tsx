@@ -55,10 +55,10 @@ const App: React.FC = () => {
         }
 
         setApiKeys({
-            gemini: localStorage.getItem('gemini_api_key') || '',
-            openai: localStorage.getItem('openai_api_key') || '',
-            openrouter: localStorage.getItem('openrouter_api_key') || '',
-            groq: localStorage.getItem('groq_api_key') || ''
+            gemini: (localStorage.getItem('gemini_api_key') || '').trim(),
+            openai: (localStorage.getItem('openai_api_key') || '').trim(),
+            openrouter: (localStorage.getItem('openrouter_api_key') || '').trim(),
+            groq: (localStorage.getItem('groq_api_key') || '').trim(),
         });
 
         if ('Notification' in window && Notification.permission !== 'denied') {
@@ -70,10 +70,10 @@ const App: React.FC = () => {
 
     const handleSaveSettings = () => {
         localStorage.setItem('ai_provider', selectedProvider);
-        localStorage.setItem('gemini_api_key', apiKeys.gemini);
-        localStorage.setItem('openai_api_key', apiKeys.openai);
-        localStorage.setItem('openrouter_api_key', apiKeys.openrouter);
-        localStorage.setItem('groq_api_key', apiKeys.groq);
+        localStorage.setItem('gemini_api_key', apiKeys.gemini.trim());
+        localStorage.setItem('openai_api_key', apiKeys.openai.trim());
+        localStorage.setItem('openrouter_api_key', apiKeys.openrouter.trim());
+        localStorage.setItem('groq_api_key', apiKeys.groq.trim());
         setShowApiKeyModal(false);
     };
 
@@ -83,41 +83,28 @@ const App: React.FC = () => {
 
     // Send a single check-in (used by both one-time and recurring)
     const sendCheckin = useCallback(async (fallbackTask: string) => {
-        console.log('🔔 sendCheckin called with fallbackTask:', fallbackTask);
-
         if (isGeneratingRef.current) {
-            console.log(`🔔 Skipped: already generating a check-in message`);
             return;
         }
 
         isGeneratingRef.current = true;
 
         try {
-            console.log(`🔔 Generating check-in message...`);
             const taskForCheckin = getCurrentTask() || fallbackTask;
-            console.log('🔔 Task for checkin:', taskForCheckin);
             const checkinMessage = await generateCheckinMessage(taskForCheckin);
-
-            console.log(`🔔 Check-in message generated: ${checkinMessage}`);
-            console.log('🔔 Notification.permission:', Notification.permission);
 
             // Show browser notification if permission granted
             if (Notification.permission === 'granted') {
-                console.log('🔔 Creating browser notification...');
-                const notif = new Notification('Focus Fairy Check-in ✨', {
+                new Notification('Focus Fairy Check-in ✨', {
                     body: checkinMessage,
                     icon: '/fairy.svg'
                 });
-                console.log('🔔 Notification created:', notif);
-            } else {
-                console.log('🔔 Notification permission not granted, skipping browser notification');
             }
 
             // Add message to chat
             setMessages(prev => [...prev, { sender: 'ai', text: `🔔 ${checkinMessage}` }]);
-            console.log(`🔔 Check-in complete!`);
-        } catch (error) {
-            console.error(`🔔 Check-in error:`, error);
+        } catch {
+            /* check-in message failed; chat already handles missing keys elsewhere */
         } finally {
             isGeneratingRef.current = false;
         }
@@ -125,8 +112,6 @@ const App: React.FC = () => {
 
     // One-time reminder - using Web Worker for reliable background execution
     const setOneTimeReminder = useCallback((minutes: number, fallbackTask: string) => {
-        console.log('🔔 setOneTimeReminder called:', { minutes, fallbackTask });
-
         // Store task for callback
         currentTaskRef.current = fallbackTask;
         timerTypeRef.current = 'one-time';
@@ -134,7 +119,6 @@ const App: React.FC = () => {
         const milliseconds = minutes * 60 * 1000;
         const timeDisplay = minutes >= 1 ? `${minutes} minute(s)` : `${Math.round(minutes * 60)} seconds`;
 
-        console.log(`🔔 One-time reminder set for ${timeDisplay} (${milliseconds}ms)`);
         setActiveTimer(minutes);
 
         const notifStatus = Notification.permission === 'granted'
@@ -153,17 +137,12 @@ const App: React.FC = () => {
 
     // Recurring check-in - using Web Worker for reliable background execution
     const startRecurringCheckin = useCallback((minutes: number, fallbackTask: string) => {
-        console.log('🔔 startRecurringCheckin called:', { minutes, fallbackTask });
-
         // Store task for callback
         currentTaskRef.current = fallbackTask;
         timerTypeRef.current = 'recurring';
 
         const milliseconds = minutes * 60 * 1000;
-        const timeDisplay = minutes >= 1 ? `${minutes} minute(s)` : `${Math.round(minutes * 60)} seconds`;
 
-        console.log(`🔔 Recurring check-in set for every ${timeDisplay} (${milliseconds}ms)`);
-        console.log(`🔔 Notification permission: ${Notification.permission}`);
         setActiveTimer(minutes);
 
         // Start worker timer
@@ -180,14 +159,12 @@ const App: React.FC = () => {
         // Handle timer ticks from worker
         workerRef.current.onmessage = async (e) => {
             if (e.data.type === 'tick') {
-                console.log('🔔 Worker timer fired! Calling sendCheckin...');
                 await sendCheckin(currentTaskRef.current);
 
                 // Clear timer state for one-time reminders
                 if (timerTypeRef.current === 'one-time') {
                     setActiveTimer(null);
                     timerTypeRef.current = null;
-                    console.log('🔔 One-time reminder complete, timer cleared.');
                 }
             }
         };
@@ -202,27 +179,20 @@ const App: React.FC = () => {
 
     // Handle reminder configuration from AI tool calls
     const handleReminderConfig = useCallback((reminder: ReminderConfig | null, fallbackTask: string) => {
-        console.log('🔔 handleReminderConfig called with:', { reminder, fallbackTask });
-
         if (!reminder) {
-            console.log('🔔 No reminder configured, returning early');
             return;
         }
 
         // Check browser API directly instead of React state (which can be stale)
         const currentPermission = Notification.permission;
-        console.log('🔔 Current notification permission:', currentPermission);
 
         if (currentPermission !== 'granted') {
-            console.log('🔔 Notifications not granted, skipping reminder');
             setMessages(prev => [...prev, {
                 sender: 'ai',
                 text: `⚠️ Enable notifications in your browser to get check-in reminders!`
             }]);
             return;
         }
-
-        console.log('🔔 Setting up reminder:', reminder);
 
         const timeDisplay = reminder.minutes >= 1
             ? `${reminder.minutes} minute(s)`
@@ -259,7 +229,6 @@ const App: React.FC = () => {
             };
             
             const { text, reminder } = await streamInitialResponse(newTask, onChunk);
-            console.log('🔔 getInitialResponse returned:', { text: text.substring(0, 50), reminder });
 
             // Mark streaming as complete (keeps showing last text until we add message)
             setStreamingComplete(true);
@@ -270,11 +239,9 @@ const App: React.FC = () => {
             setStreamingComplete(false);
 
             // Let AI decide the reminder configuration via tool calling
-            console.log('🔔 Calling handleReminderConfig with reminder:', reminder);
             handleReminderConfig(reminder, newTask);
 
-        } catch (error) {
-            console.error("Failed to initialize chat:", error);
+        } catch {
             await appendLocalAiMessageWithStreaming("To use Focus Fairy, please add your own API key in Settings. Don't worry, you can use free-tier keys!");
 
             // Fallback: start default recurring check-in on error
@@ -314,8 +281,7 @@ const App: React.FC = () => {
             // Let AI decide the reminder configuration via tool calling
             handleReminderConfig(reminder, task);
 
-        } catch (error) {
-            console.error("Failed to send message:", error);
+        } catch {
             await appendLocalAiMessageWithStreaming("I'm having trouble responding right now. Let's try again in a moment.");
         } finally {
             setIsLoading(false);

@@ -35,6 +35,13 @@ export const NO_API_KEY_MESSAGE =
     "You need an API key to use the app. Go to Settings, choose your AI provider, and paste your API key there.";
 
 /**
+ * Cap completion length so providers (especially OpenRouter) do not reserve huge max_tokens
+ * budgets against small credit balances. Focus Fairy replies are short; tool JSON is small.
+ */
+const CHAT_MAX_OUTPUT_TOKENS = 2048;
+const CHECKIN_MAX_OUTPUT_TOKENS = 256;
+
+/**
  * Streaming can yield empty text when the model calls setReminder without emitting assistant text.
  * Non-streaming callAI already falls back; this keeps chat from showing the empty-state placeholder.
  */
@@ -64,19 +71,18 @@ async function recoverAssistantTextFromStream(result: {
         for await (const chunk of result.textStream) {
             streamedText += chunk;
         }
-    } catch (streamError) {
-        console.error('🔔 Error consuming stream:', streamError);
+    } catch {
+        /* stream may fail if the request errors */
     }
     if (streamedText.trim().length > 0) return streamedText;
 
     try {
         const resolved = (await result.text).trim();
         if (resolved.length > 0) {
-            console.log('🔔 textStream had no chunks; recovered full text from result.text, length:', resolved.length);
             return resolved;
         }
-    } catch (e) {
-        console.error('🔔 result.text failed:', e);
+    } catch {
+        /* result.text may reject after stream errors */
     }
     return streamedText;
 }
@@ -96,8 +102,8 @@ async function extractAssistantTextFromResponseMessages(result: {
                 .map((item: { text?: string }) => ('text' in item && item.text ? item.text : ''))
                 .join('');
         }
-    } catch (e) {
-        console.error('🔔 Failed to parse assistant text from response.messages:', e);
+    } catch {
+        /* response.messages may be unavailable after errors */
     }
     return '';
 }
@@ -188,9 +194,8 @@ const systemInstruction = `You are Focus Fairy, a gentle and playful assistant t
 
 const getConfig = (): AIConfig => {
     const provider = (localStorage.getItem('ai_provider') as AIProvider) || 'gemini';
-    const apiKey = localStorage.getItem(`${provider}_api_key`) || '';
-
-    console.log('AI Config:', { provider, hasKey: !!apiKey });
+    // Trim so whitespace-only keys fail fast; @ai-sdk/openai sends Bearer <key> and an empty/space key yields a useless header.
+    const apiKey = (localStorage.getItem(`${provider}_api_key`) || '').trim();
 
     if (!apiKey) {
         throw new Error(`No API key found for ${provider}.`);
@@ -211,10 +216,20 @@ const getModel = (provider: AIProvider, apiKey: string): LanguageModel => {
             return openai.chat('gpt-4o-mini');
         }
         case 'openrouter': {
-            // Use .chat() for OpenRouter (uses /chat/completions endpoint)
+            // OpenRouter expects Authorization: Bearer <key>. Set it explicitly on the provider so the header is never omitted (some SDK/browser edge cases reported "Missing Authentication header").
+            const referer =
+                typeof window !== 'undefined' && window.location?.origin
+                    ? window.location.origin
+                    : 'http://localhost';
             const openrouter = createOpenAI({
                 apiKey,
                 baseURL: 'https://openrouter.ai/api/v1',
+                name: 'openrouter',
+                headers: {
+                    Authorization: `Bearer ${apiKey}`,
+                    'HTTP-Referer': referer,
+                    'X-OpenRouter-Title': 'Focus Fairy',
+                },
             });
             return openrouter.chat('openai/gpt-5.4-mini');
         }
@@ -274,6 +289,7 @@ const callAI = async (messages: ChatMessage[]): Promise<AIResponse> => {
     try {
         const result = await generateText({
             model,
+            maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS,
             system: systemInstruction,
             messages: messages.map(m => ({
                 role: m.role as 'user' | 'assistant',
@@ -282,11 +298,6 @@ const callAI = async (messages: ChatMessage[]): Promise<AIResponse> => {
             tools: {
                 setReminder: setReminderTool,
             },
-        });
-
-        console.log('AI SDK Response:', {
-            text: result.text?.substring(0, 100),
-            toolCalls: result.toolCalls || [],
         });
 
         // Extract reminder from tool calls
@@ -300,7 +311,6 @@ const callAI = async (messages: ChatMessage[]): Promise<AIResponse> => {
                     minutes: input.minutes,
                     reason: input.reason,
                 };
-                console.log('📋 Reminder set via tool:', reminder);
             }
         }
 
@@ -309,13 +319,11 @@ const callAI = async (messages: ChatMessage[]): Promise<AIResponse> => {
             reminder,
         };
     } catch (error) {
-        console.error('AI SDK error:', error);
-
         // Fallback: try without tools if tool calling fails
         try {
-            console.log('Attempting fallback without tools...');
             const fallbackResult = await generateText({
                 model,
+                maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS,
                 system: systemInstruction,
                 messages: messages.map(m => ({
                     role: m.role as 'user' | 'assistant',
@@ -327,8 +335,7 @@ const callAI = async (messages: ChatMessage[]): Promise<AIResponse> => {
                 text: fallbackResult.text || "I'm here to help you focus!",
                 reminder: null,
             };
-        } catch (fallbackError) {
-            console.error('Fallback also failed:', fallbackError);
+        } catch {
             throw error;
         }
     }
@@ -345,9 +352,7 @@ export const getInitialResponse = async (userInput: string): Promise<AIResponse>
     conversationHistory = [{ role: 'user', content: userInput }];
 
     try {
-        console.log('🔔 Getting initial response for:', userInput);
         const response = await callAI(conversationHistory);
-        console.log('🔔 AI response:', { text: response.text?.substring(0, 50), reminder: response.reminder });
         conversationHistory.push({ role: 'assistant', content: response.text });
 
         // Store task if AI set a reminder (indicating it detected a task)
@@ -359,7 +364,6 @@ export const getInitialResponse = async (userInput: string): Promise<AIResponse>
 
         return response;
     } catch (error) {
-        console.error("AI API error in getInitialResponse:", error);
         const isNoApiKey = error instanceof Error && error.message.includes('No API key');
         return {
             text: isNoApiKey ? NO_API_KEY_MESSAGE : `I'm having trouble connecting. Go to Settings (gear icon) and check your API key, then try again.`,
@@ -378,12 +382,10 @@ export const continueChat = async (message: string): Promise<AIResponse> => {
         // Update currentTask if AI set a reminder (indicating it detected a new task)
         if (response.reminder) {
             currentTask = message;
-            console.log('Updated current task to:', currentTask);
         }
 
         return response;
     } catch (error) {
-        console.error("AI API error in continueChat:", error);
         const isNoApiKey = error instanceof Error && error.message.includes('No API key');
         return {
             text: isNoApiKey ? NO_API_KEY_MESSAGE : "I'm having trouble responding right now. Let's try again in a moment.",
@@ -402,36 +404,32 @@ export const streamInitialResponse = async (
     const { provider, apiKey } = getConfig();
     const model = getModel(provider, apiKey);
 
-    try {
-        const result = streamText({
-            model,
-            system: systemInstruction,
-            messages: conversationHistory.map(m => ({
-                role: m.role as 'user' | 'assistant',
-                content: m.content,
-            })),
-            tools: {
-                setReminder: setReminderTool,
-            },
-        });
+    const result = streamText({
+        model,
+        maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS,
+        system: systemInstruction,
+        messages: conversationHistory.map(m => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+        })),
+        tools: {
+            setReminder: setReminderTool,
+        },
+    });
 
-        const { text: replyText, reminder } = await streamAssistantReplyToUI(result, onChunk);
+    const { text: replyText, reminder } = await streamAssistantReplyToUI(result, onChunk);
 
-        // Store in conversation history
-        conversationHistory.push({ role: 'assistant', content: replyText });
+    // Store in conversation history
+    conversationHistory.push({ role: 'assistant', content: replyText });
 
-        // Store task if AI set a reminder
-        if (reminder) {
-            currentTask = userInput;
-        } else {
-            currentTask = null;
-        }
-
-        return { text: replyText, reminder };
-    } catch (error) {
-        console.error('Streaming error:', error);
-        throw error;
+    // Store task if AI set a reminder
+    if (reminder) {
+        currentTask = userInput;
+    } else {
+        currentTask = null;
     }
+
+    return { text: replyText, reminder };
 };
 
 export const streamContinueChat = async (
@@ -443,35 +441,30 @@ export const streamContinueChat = async (
     const { provider, apiKey } = getConfig();
     const model = getModel(provider, apiKey);
 
-    try {
-        const result = streamText({
-            model,
-            system: systemInstruction,
-            messages: conversationHistory.map(m => ({
-                role: m.role as 'user' | 'assistant',
-                content: m.content,
-            })),
-            tools: {
-                setReminder: setReminderTool,
-            },
-        });
+    const result = streamText({
+        model,
+        maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS,
+        system: systemInstruction,
+        messages: conversationHistory.map(m => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+        })),
+        tools: {
+            setReminder: setReminderTool,
+        },
+    });
 
-        const { text: replyText, reminder } = await streamAssistantReplyToUI(result, onChunk);
+    const { text: replyText, reminder } = await streamAssistantReplyToUI(result, onChunk);
 
-        // Store in conversation history
-        conversationHistory.push({ role: 'assistant', content: replyText });
+    // Store in conversation history
+    conversationHistory.push({ role: 'assistant', content: replyText });
 
-        // Update currentTask if AI set a reminder
-        if (reminder) {
-            currentTask = message;
-            console.log('Updated current task to:', currentTask);
-        }
-
-        return { text: replyText, reminder };
-    } catch (error) {
-        console.error('Streaming error:', error);
-        throw error;
+    // Update currentTask if AI set a reminder
+    if (reminder) {
+        currentTask = message;
     }
+
+    return { text: replyText, reminder };
 };
 
 export const generateCheckinMessage = async (fallbackTask: string): Promise<string> => {
@@ -490,12 +483,12 @@ export const generateCheckinMessage = async (fallbackTask: string): Promise<stri
 
         const result = await generateText({
             model,
+            maxOutputTokens: CHECKIN_MAX_OUTPUT_TOKENS,
             messages: [{ role: 'user', content: prompt }],
         });
 
         return result.text || "Just checking in! How's your progress? ✨";
     } catch (error) {
-        console.error("AI API error in generateCheckinMessage:", error);
         if (error instanceof Error && error.message.includes('No API key')) {
             throw error;
         }
