@@ -363,6 +363,15 @@ body {
   gap: 0;
 }
 
+/* Desktop alignment: reserve space on the right of the AI row equal to the send
+   button (44px) + form gap (12px) so the bubble's right edge aligns with the
+   input field's right edge (matching the left-edge alignment). */
+@media (min-width: 641px) {
+  .ai-message-row {
+    padding-right: 56px;
+  }
+}
+
 /* Nav arrows - fixed position in center-right of chat view */
 .chat-view-wrapper .nav-arrows {
   position: absolute;
@@ -468,6 +477,20 @@ body {
   /* InitialTaskInput - adjust nav arrows for the padded container */
   .chat-view-wrapper[style*="height: auto"] .nav-arrows {
     right: 12px;
+  }
+
+  /* InitialTaskInput - reserve space on the right of the AI row equal to the
+     send button (40px) + form gap (8px) on mobile so the intro bubble's right
+     edge aligns with the input field's right edge. ChatInterface bubbles on
+     mobile are intentionally left untouched. */
+  .chat-view-wrapper[style*="height: auto"] .ai-message-row {
+    padding-right: 48px;
+  }
+
+  /* InitialTaskInput - give the intro bubble more breathing room so the text
+     doesn't crowd the rounded pill edges on mobile. */
+  .chat-view-wrapper[style*="height: auto"] .speech-bubble-ai {
+    padding: 16px 24px;
   }
 
   /* User message row - align with right edge of input field (before button) */
