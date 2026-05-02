@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import InitialTaskInput from './components/InitialTaskInput';
 import ChatInterface from './components/ChatInterface';
-import { ChatMessage } from './types';
-import { initializeChat, generateCheckinMessage, getCurrentTask, AIProvider, ReminderConfig, streamInitialResponse, streamContinueChat } from './services/aiService';
+import { ChatMessage, SessionTask } from './types';
+import { initializeChat, generateCheckinMessage, getCurrentTask, AIProvider, ReminderConfig, TaskUpdate, streamInitialResponse, streamContinueChat } from './services/aiService';
 
 const DEFAULT_CHECKIN_MINUTES = 15;
 
@@ -13,9 +13,35 @@ const PROVIDERS: { id: AIProvider; name: string }[] = [
     { id: 'groq', name: 'Groq' },
 ];
 
+interface SessionTaskState {
+    tasks: SessionTask[];
+    currentTaskId: string | null;
+}
+
+const normalizeTaskTitle = (title: string) => title.trim().toLowerCase().replace(/\s+/g, ' ');
+
+const createSessionTaskId = () => {
+    const randomPart = Math.random().toString(36).slice(2, 8);
+    return `task-${Date.now()}-${randomPart}`;
+};
+
+const resolveCurrentTaskTitle = (taskUpdate: TaskUpdate | null, fallbackTask: string) => {
+    const explicitCurrent = taskUpdate?.currentTaskTitle?.trim();
+    if (explicitCurrent) return explicitCurrent;
+
+    const flaggedCurrent = taskUpdate?.tasks.find(task => task.isCurrent)?.title.trim();
+    if (flaggedCurrent) return flaggedCurrent;
+
+    return fallbackTask.trim();
+};
+
 const App: React.FC = () => {
     const [task, setTask] = useState<string | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [sessionTaskState, setSessionTaskState] = useState<SessionTaskState>({
+        tasks: [],
+        currentTaskId: null,
+    });
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [streamingText, setStreamingText] = useState<string>('');
     const [streamingComplete, setStreamingComplete] = useState<boolean>(false);
@@ -31,6 +57,64 @@ const App: React.FC = () => {
     const [activeTimer, setActiveTimer] = useState<number | null>(null); // Track active timer minutes
     const workerRef = useRef<Worker | null>(null);
     const currentTaskRef = useRef<string>(''); // Store current task for worker callback
+
+    const currentSessionTask = useMemo(
+        () => sessionTaskState.tasks.find(sessionTask => sessionTask.id === sessionTaskState.currentTaskId) ?? null,
+        [sessionTaskState]
+    );
+    const currentTaskTitle = currentSessionTask?.title ?? task ?? '';
+
+    const applyTaskUpdate = useCallback((taskUpdate: TaskUpdate | null, fallbackTask: string, shouldUseFallback: boolean) => {
+        const currentTitle = resolveCurrentTaskTitle(taskUpdate, shouldUseFallback ? fallbackTask : '');
+
+        if (!taskUpdate && !currentTitle) {
+            return '';
+        }
+
+        setSessionTaskState(prev => {
+            const tasks = [...prev.tasks];
+            const tasksByTitle = new Map(tasks.map(sessionTask => [normalizeTaskTitle(sessionTask.title), sessionTask]));
+
+            for (const detectedTask of taskUpdate?.tasks ?? []) {
+                const title = detectedTask.title.trim();
+                if (!title) continue;
+
+                const normalizedTitle = normalizeTaskTitle(title);
+                if (!tasksByTitle.has(normalizedTitle)) {
+                    const sessionTask: SessionTask = {
+                        id: createSessionTaskId(),
+                        title,
+                        createdAt: Date.now(),
+                    };
+                    tasks.push(sessionTask);
+                    tasksByTitle.set(normalizedTitle, sessionTask);
+                }
+            }
+
+            let currentTaskId = prev.currentTaskId;
+            if (currentTitle) {
+                const normalizedCurrentTitle = normalizeTaskTitle(currentTitle);
+                let currentTask = tasksByTitle.get(normalizedCurrentTitle);
+
+                if (!currentTask) {
+                    currentTask = {
+                        id: createSessionTaskId(),
+                        title: currentTitle,
+                        createdAt: Date.now(),
+                    };
+                    tasks.push(currentTask);
+                    tasksByTitle.set(normalizedCurrentTitle, currentTask);
+                }
+
+                currentTaskId = currentTask.id;
+            }
+
+            return { tasks, currentTaskId };
+        });
+
+        currentTaskRef.current = currentTitle;
+        return currentTitle;
+    }, []);
 
     const appendLocalAiMessageWithStreaming = useCallback(async (text: string) => {
         setStreamingText('');
@@ -90,7 +174,7 @@ const App: React.FC = () => {
         isGeneratingRef.current = true;
 
         try {
-            const taskForCheckin = getCurrentTask() || fallbackTask;
+            const taskForCheckin = currentTaskRef.current || getCurrentTask() || fallbackTask;
             const checkinMessage = await generateCheckinMessage(taskForCheckin);
 
             // Show browser notification if permission granted
@@ -228,7 +312,7 @@ const App: React.FC = () => {
                 setStreamingText(text);
             };
             
-            const { text, reminder } = await streamInitialResponse(newTask, onChunk);
+            const { text, reminder, taskUpdate } = await streamInitialResponse(newTask, onChunk);
 
             // Mark streaming as complete (keeps showing last text until we add message)
             setStreamingComplete(true);
@@ -238,14 +322,17 @@ const App: React.FC = () => {
             setStreamingText('');
             setStreamingComplete(false);
 
+            const reminderTask = applyTaskUpdate(taskUpdate, newTask, Boolean(reminder));
+
             // Let AI decide the reminder configuration via tool calling
-            handleReminderConfig(reminder, newTask);
+            handleReminderConfig(reminder, reminderTask || newTask);
 
         } catch {
             await appendLocalAiMessageWithStreaming("To use Focus Fairy, please add your own API key in Settings. Don't worry, you can use free-tier keys!");
 
             // Fallback: start default recurring check-in on error
             if (Notification.permission === 'granted') {
+                applyTaskUpdate(null, newTask, true);
                 startRecurringCheckin(DEFAULT_CHECKIN_MINUTES, newTask);
             }
         } finally {
@@ -268,7 +355,7 @@ const App: React.FC = () => {
                 setStreamingText(text);
             };
             
-            const { text, reminder } = await streamContinueChat(userMessage, onChunk);
+            const { text, reminder, taskUpdate } = await streamContinueChat(userMessage, onChunk);
             
             // Mark streaming as complete (keeps showing last text until we add message)
             setStreamingComplete(true);
@@ -278,8 +365,10 @@ const App: React.FC = () => {
             setStreamingText('');
             setStreamingComplete(false);
 
+            const reminderTask = applyTaskUpdate(taskUpdate, userMessage, Boolean(reminder));
+
             // Let AI decide the reminder configuration via tool calling
-            handleReminderConfig(reminder, task);
+            handleReminderConfig(reminder, reminderTask || currentTaskTitle || task);
 
         } catch {
             await appendLocalAiMessageWithStreaming("I'm having trouble responding right now. Let's try again in a moment.");
@@ -295,6 +384,8 @@ const App: React.FC = () => {
             {task ? (
                 <ChatInterface
                     task={task}
+                    currentTask={currentTaskTitle}
+                    sessionTasks={sessionTaskState.tasks}
                     messages={messages}
                     onSendMessage={handleSendMessage}
                     isLoading={isLoading}

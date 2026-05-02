@@ -25,9 +25,20 @@ export interface ReminderConfig {
     reason: string;
 }
 
+export interface DetectedTask {
+    title: string;
+    isCurrent: boolean;
+}
+
+export interface TaskUpdate {
+    tasks: DetectedTask[];
+    currentTaskTitle: string | null;
+}
+
 export interface AIResponse {
     text: string;
     reminder: ReminderConfig | null;
+    taskUpdate: TaskUpdate | null;
 }
 
 /** User-facing message when no API key is saved. Shown in chat and check-in errors. */
@@ -48,12 +59,16 @@ const CHECKIN_MAX_OUTPUT_TOKENS = 256;
 function ensureStreamedAssistantText(
     streamed: string,
     parsedFromMessage: string,
-    reminder: ReminderConfig | null
+    reminder: ReminderConfig | null,
+    taskUpdate: TaskUpdate | null
 ): string {
     const combined = (streamed || parsedFromMessage).trim();
     if (combined.length > 0) return combined;
     if (reminder) {
         return "Got it! I'll check in to keep you on track. You've got this! ✨";
+    }
+    if (taskUpdate && taskUpdate.tasks.length > 0) {
+        return "Got it! I've added that to your focus list.";
     }
     return "I'm here to help you focus! What would you like to work on?";
 }
@@ -134,6 +149,44 @@ function extractReminderFromStaticToolCalls(
     return null;
 }
 
+function extractTaskUpdateFromStaticToolCalls(
+    staticCalls: Array<{ toolName: string; input?: unknown }>
+): TaskUpdate | null {
+    let taskUpdate: TaskUpdate | null = null;
+
+    for (const tc of staticCalls) {
+        if (tc.toolName !== 'recordTasks' || tc.input == null || typeof tc.input !== 'object') continue;
+
+        const input = tc.input as {
+            tasks?: Array<{ title?: unknown; isCurrent?: unknown }>;
+            currentTaskTitle?: unknown;
+        };
+
+        if (!Array.isArray(input.tasks)) continue;
+
+        const tasks = input.tasks
+            .map(task => ({
+                title: typeof task.title === 'string' ? task.title.trim() : '',
+                isCurrent: task.isCurrent === true,
+            }))
+            .filter(task => task.title.length > 0);
+
+        if (tasks.length === 0) continue;
+
+        const currentTaskTitle =
+            typeof input.currentTaskTitle === 'string' && input.currentTaskTitle.trim().length > 0
+                ? input.currentTaskTitle.trim()
+                : tasks.find(task => task.isCurrent)?.title ?? tasks[tasks.length - 1].title;
+
+        taskUpdate = {
+            tasks,
+            currentTaskTitle,
+        };
+    }
+
+    return taskUpdate;
+}
+
 async function streamAssistantReplyToUI(
     result: {
         textStream: AsyncIterable<string>;
@@ -142,7 +195,7 @@ async function streamAssistantReplyToUI(
         staticToolCalls: PromiseLike<Array<{ toolName: string; input?: unknown }>>;
     },
     onChunk: StreamCallback
-): Promise<{ text: string; reminder: ReminderConfig | null }> {
+): Promise<{ text: string; reminder: ReminderConfig | null; taskUpdate: TaskUpdate | null }> {
     let merged = await recoverAssistantTextFromStream(result);
     let fromMessages = '';
     if (!merged.trim()) {
@@ -157,8 +210,9 @@ async function streamAssistantReplyToUI(
 
     const staticCalls = await result.staticToolCalls;
     const reminder = extractReminderFromStaticToolCalls(staticCalls);
-    const replyText = ensureStreamedAssistantText(merged, fromMessages, reminder);
-    return { text: replyText, reminder };
+    const taskUpdate = extractTaskUpdateFromStaticToolCalls(staticCalls);
+    const replyText = ensureStreamedAssistantText(merged, fromMessages, reminder, taskUpdate);
+    return { text: replyText, reminder, taskUpdate };
 }
 
 const systemInstruction = `You are Focus Fairy, a gentle and playful assistant that helps users stay focused on their tasks.
@@ -169,9 +223,15 @@ const systemInstruction = `You are Focus Fairy, a gentle and playful assistant t
 - Your ONLY job is to help the user focus on a task they want to work on.
 
 **HANDLING MESSAGES**:
-- TASK: If the user shares a clear, actionable task they want to work on (like "I need to finish my essay" or "working on code"), acknowledge it warmly and use the setReminder tool.
+- TASK: If the user shares one or more clear, actionable tasks they want to work on (like "I need to finish my essay" or "working on code"), acknowledge it warmly, use the recordTasks tool with ALL tasks you detect, and use the setReminder tool.
 - GREETING: If they just say hi, hello, hey, or any greeting (even if they address you by name like "hi focus fairy"), warmly ask what they'd like to focus on today. Do NOT set a reminder.
 - OFF-TOPIC: If they ask a question or talk about something unrelated to focusing, briefly acknowledge it with a light comment, then ask what task they'd like to focus on. Do NOT set a reminder.
+
+**TASK LIST RULES** (recordTasks tool):
+- Use recordTasks whenever the user states clear, actionable work they intend to do.
+- Include every distinct task from the user's latest message, not just the first one.
+- Set isCurrent=true for the task the user appears to be focusing on now. If unclear, use the first or most specific task.
+- Do NOT record greetings, questions, vague intentions, or off-topic chat as tasks.
 
 **REMINDER RULES** (setReminder tool):
 - ONLY use setReminder when the user explicitly states a task they want to work on.
@@ -259,7 +319,13 @@ const reminderToolSchema = z.object({
     ),
 });
 
-type ReminderToolInput = z.infer<typeof reminderToolSchema>;
+const taskToolSchema = z.object({
+    tasks: z.array(z.object({
+        title: z.string().min(1).max(140).describe('A concise user-facing task title.'),
+        isCurrent: z.boolean().describe('True for the task the user should focus on now.'),
+    })).min(1).max(8).describe('Every clear, actionable task detected in the latest user message.'),
+    currentTaskTitle: z.string().min(1).max(140).describe('The exact title of the task that should be current.'),
+});
 
 const setReminderTool = tool({
     description: `Set check-ins for the user's focus session.
@@ -267,6 +333,12 @@ Use 'recurring' (default for focus sessions) to provide periodic check-ins throu
 Use 'one-time' ONLY when user explicitly asks for a single reminder at a specific time (e.g., "remind me in exactly 30 min").
 For focus sessions with a duration (e.g., "work for 1 hour"), ALWAYS use recurring with appropriate intervals.`,
     inputSchema: reminderToolSchema,
+});
+
+const recordTasksTool = tool({
+    description: `Record all clear, actionable tasks from the user's latest message for this browser session.
+Use this for task list memory only. Do not call it for greetings, vague messages, questions, or off-topic chat.`,
+    inputSchema: taskToolSchema,
 });
 
 // Store conversation history
@@ -297,26 +369,18 @@ const callAI = async (messages: ChatMessage[]): Promise<AIResponse> => {
             })),
             tools: {
                 setReminder: setReminderTool,
+                recordTasks: recordTasksTool,
             },
         });
 
-        // Extract reminder from tool calls
-        let reminder: ReminderConfig | null = null;
-
-        for (const toolCall of result.toolCalls || []) {
-            if (toolCall.toolName === 'setReminder' && 'input' in toolCall) {
-                const input = toolCall.input as ReminderToolInput;
-                reminder = {
-                    type: input.type,
-                    minutes: input.minutes,
-                    reason: input.reason,
-                };
-            }
-        }
+        const toolCalls = (result.toolCalls || []) as Array<{ toolName: string; input?: unknown }>;
+        const reminder = extractReminderFromStaticToolCalls(toolCalls);
+        const taskUpdate = extractTaskUpdateFromStaticToolCalls(toolCalls);
 
         return {
             text: result.text || "I'm here to help you focus! What would you like to work on?",
             reminder,
+            taskUpdate,
         };
     } catch (error) {
         // Fallback: try without tools if tool calling fails
@@ -334,6 +398,7 @@ const callAI = async (messages: ChatMessage[]): Promise<AIResponse> => {
             return {
                 text: fallbackResult.text || "I'm here to help you focus!",
                 reminder: null,
+                taskUpdate: null,
             };
         } catch {
             throw error;
@@ -355,8 +420,10 @@ export const getInitialResponse = async (userInput: string): Promise<AIResponse>
         const response = await callAI(conversationHistory);
         conversationHistory.push({ role: 'assistant', content: response.text });
 
-        // Store task if AI set a reminder (indicating it detected a task)
-        if (response.reminder) {
+        // Store the AI-selected current task for generated check-ins.
+        if (response.taskUpdate?.currentTaskTitle) {
+            currentTask = response.taskUpdate.currentTaskTitle;
+        } else if (response.reminder) {
             currentTask = userInput;
         } else {
             currentTask = null;
@@ -367,7 +434,8 @@ export const getInitialResponse = async (userInput: string): Promise<AIResponse>
         const isNoApiKey = error instanceof Error && error.message.includes('No API key');
         return {
             text: isNoApiKey ? NO_API_KEY_MESSAGE : `I'm having trouble connecting. Go to Settings (gear icon) and check your API key, then try again.`,
-            reminder: null
+            reminder: null,
+            taskUpdate: null,
         };
     }
 };
@@ -379,8 +447,10 @@ export const continueChat = async (message: string): Promise<AIResponse> => {
         const response = await callAI(conversationHistory);
         conversationHistory.push({ role: 'assistant', content: response.text });
 
-        // Update currentTask if AI set a reminder (indicating it detected a new task)
-        if (response.reminder) {
+        // Update currentTask if AI detected a new current task.
+        if (response.taskUpdate?.currentTaskTitle) {
+            currentTask = response.taskUpdate.currentTaskTitle;
+        } else if (response.reminder) {
             currentTask = message;
         }
 
@@ -389,7 +459,8 @@ export const continueChat = async (message: string): Promise<AIResponse> => {
         const isNoApiKey = error instanceof Error && error.message.includes('No API key');
         return {
             text: isNoApiKey ? NO_API_KEY_MESSAGE : "I'm having trouble responding right now. Let's try again in a moment.",
-            reminder: null
+            reminder: null,
+            taskUpdate: null,
         };
     }
 };
@@ -414,22 +485,25 @@ export const streamInitialResponse = async (
         })),
         tools: {
             setReminder: setReminderTool,
+            recordTasks: recordTasksTool,
         },
     });
 
-    const { text: replyText, reminder } = await streamAssistantReplyToUI(result, onChunk);
+    const { text: replyText, reminder, taskUpdate } = await streamAssistantReplyToUI(result, onChunk);
 
     // Store in conversation history
     conversationHistory.push({ role: 'assistant', content: replyText });
 
-    // Store task if AI set a reminder
-    if (reminder) {
+    // Store the AI-selected current task for generated check-ins.
+    if (taskUpdate?.currentTaskTitle) {
+        currentTask = taskUpdate.currentTaskTitle;
+    } else if (reminder) {
         currentTask = userInput;
     } else {
         currentTask = null;
     }
 
-    return { text: replyText, reminder };
+    return { text: replyText, reminder, taskUpdate };
 };
 
 export const streamContinueChat = async (
@@ -451,20 +525,23 @@ export const streamContinueChat = async (
         })),
         tools: {
             setReminder: setReminderTool,
+            recordTasks: recordTasksTool,
         },
     });
 
-    const { text: replyText, reminder } = await streamAssistantReplyToUI(result, onChunk);
+    const { text: replyText, reminder, taskUpdate } = await streamAssistantReplyToUI(result, onChunk);
 
     // Store in conversation history
     conversationHistory.push({ role: 'assistant', content: replyText });
 
-    // Update currentTask if AI set a reminder
-    if (reminder) {
+    // Update currentTask if AI detected a new current task.
+    if (taskUpdate?.currentTaskTitle) {
+        currentTask = taskUpdate.currentTaskTitle;
+    } else if (reminder) {
         currentTask = message;
     }
 
-    return { text: replyText, reminder };
+    return { text: replyText, reminder, taskUpdate };
 };
 
 export const generateCheckinMessage = async (fallbackTask: string): Promise<string> => {
