@@ -18,6 +18,12 @@ interface SessionTaskState {
     currentTaskId: string | null;
 }
 
+interface TaskUpdateResult {
+    currentTitle: string;
+    tasks: SessionTask[];
+    shouldShowTaskList: boolean;
+}
+
 const normalizeTaskTitle = (title: string) => title.trim().toLowerCase().replace(/\s+/g, ' ');
 
 const createSessionTaskId = () => {
@@ -64,57 +70,64 @@ const App: React.FC = () => {
     );
     const currentTaskTitle = currentSessionTask?.title ?? task ?? '';
 
-    const applyTaskUpdate = useCallback((taskUpdate: TaskUpdate | null, fallbackTask: string, shouldUseFallback: boolean) => {
+    const applyTaskUpdate = useCallback((taskUpdate: TaskUpdate | null, fallbackTask: string, shouldUseFallback: boolean): TaskUpdateResult => {
         const currentTitle = resolveCurrentTaskTitle(taskUpdate, shouldUseFallback ? fallbackTask : '');
 
         if (!taskUpdate && !currentTitle) {
-            return '';
+            return {
+                currentTitle: '',
+                tasks: sessionTaskState.tasks,
+                shouldShowTaskList: false,
+            };
         }
 
-        setSessionTaskState(prev => {
-            const tasks = [...prev.tasks];
-            const tasksByTitle = new Map(tasks.map(sessionTask => [normalizeTaskTitle(sessionTask.title), sessionTask]));
+        const tasks = [...sessionTaskState.tasks];
+        const tasksByTitle = new Map(tasks.map(sessionTask => [normalizeTaskTitle(sessionTask.title), sessionTask]));
+        const detectedTasks = taskUpdate?.tasks ?? [];
 
-            for (const detectedTask of taskUpdate?.tasks ?? []) {
-                const title = detectedTask.title.trim();
-                if (!title) continue;
+        for (const detectedTask of detectedTasks) {
+            const title = detectedTask.title.trim();
+            if (!title) continue;
 
-                const normalizedTitle = normalizeTaskTitle(title);
-                if (!tasksByTitle.has(normalizedTitle)) {
-                    const sessionTask: SessionTask = {
-                        id: createSessionTaskId(),
-                        title,
-                        createdAt: Date.now(),
-                    };
-                    tasks.push(sessionTask);
-                    tasksByTitle.set(normalizedTitle, sessionTask);
-                }
+            const normalizedTitle = normalizeTaskTitle(title);
+            if (!tasksByTitle.has(normalizedTitle)) {
+                const sessionTask: SessionTask = {
+                    id: createSessionTaskId(),
+                    title,
+                    createdAt: Date.now(),
+                };
+                tasks.push(sessionTask);
+                tasksByTitle.set(normalizedTitle, sessionTask);
+            }
+        }
+
+        let currentTaskId = sessionTaskState.currentTaskId;
+        if (currentTitle) {
+            const normalizedCurrentTitle = normalizeTaskTitle(currentTitle);
+            let currentTask = tasksByTitle.get(normalizedCurrentTitle);
+
+            if (!currentTask) {
+                currentTask = {
+                    id: createSessionTaskId(),
+                    title: currentTitle,
+                    createdAt: Date.now(),
+                };
+                tasks.push(currentTask);
+                tasksByTitle.set(normalizedCurrentTitle, currentTask);
             }
 
-            let currentTaskId = prev.currentTaskId;
-            if (currentTitle) {
-                const normalizedCurrentTitle = normalizeTaskTitle(currentTitle);
-                let currentTask = tasksByTitle.get(normalizedCurrentTitle);
+            currentTaskId = currentTask.id;
+        }
 
-                if (!currentTask) {
-                    currentTask = {
-                        id: createSessionTaskId(),
-                        title: currentTitle,
-                        createdAt: Date.now(),
-                    };
-                    tasks.push(currentTask);
-                    tasksByTitle.set(normalizedCurrentTitle, currentTask);
-                }
-
-                currentTaskId = currentTask.id;
-            }
-
-            return { tasks, currentTaskId };
-        });
+        setSessionTaskState({ tasks, currentTaskId });
 
         currentTaskRef.current = currentTitle;
-        return currentTitle;
-    }, []);
+        return {
+            currentTitle,
+            tasks,
+            shouldShowTaskList: detectedTasks.some(detectedTask => detectedTask.title.trim().length > 0),
+        };
+    }, [sessionTaskState]);
 
     const appendLocalAiMessageWithStreaming = useCallback(async (text: string) => {
         setStreamingText('');
@@ -130,6 +143,18 @@ const App: React.FC = () => {
         setStreamingText('');
         setStreamingComplete(false);
     }, []);
+
+    const getTaskListMessageMeta = (taskUpdateResult: TaskUpdateResult): Partial<ChatMessage> => {
+        if (!taskUpdateResult.shouldShowTaskList || taskUpdateResult.tasks.length === 0) {
+            return {};
+        }
+
+        return {
+            showTaskList: true,
+            taskListSnapshot: taskUpdateResult.tasks,
+            currentTaskSnapshot: taskUpdateResult.currentTitle,
+        };
+    };
 
     useEffect(() => {
         // Load saved provider and keys
@@ -195,7 +220,7 @@ const App: React.FC = () => {
     }, []);
 
     // One-time reminder - using Web Worker for reliable background execution
-    const setOneTimeReminder = useCallback((minutes: number, fallbackTask: string) => {
+    const setOneTimeReminder = useCallback((minutes: number, fallbackTask: string, taskListMeta: Partial<ChatMessage> = {}) => {
         // Store task for callback
         currentTaskRef.current = fallbackTask;
         timerTypeRef.current = 'one-time';
@@ -210,7 +235,8 @@ const App: React.FC = () => {
             : ' (⚠️ Enable notifications in your browser for alerts!)';
         setMessages(prev => [...prev, {
             sender: 'ai',
-            text: `⏰ Got it! I'll remind you in ${timeDisplay}.${notifStatus}`
+            text: `⏰ Got it! I'll remind you in ${timeDisplay}.${notifStatus}`,
+            ...taskListMeta,
         }]);
 
         // Start worker timer
@@ -262,7 +288,7 @@ const App: React.FC = () => {
     }, [sendCheckin]);
 
     // Handle reminder configuration from AI tool calls
-    const handleReminderConfig = useCallback((reminder: ReminderConfig | null, fallbackTask: string) => {
+    const handleReminderConfig = useCallback((reminder: ReminderConfig | null, fallbackTask: string, taskListMeta: Partial<ChatMessage> = {}) => {
         if (!reminder) {
             return;
         }
@@ -273,7 +299,8 @@ const App: React.FC = () => {
         if (currentPermission !== 'granted') {
             setMessages(prev => [...prev, {
                 sender: 'ai',
-                text: `⚠️ Enable notifications in your browser to get check-in reminders!`
+                text: `⚠️ Enable notifications in your browser to get check-in reminders!`,
+                ...taskListMeta,
             }]);
             return;
         }
@@ -283,12 +310,13 @@ const App: React.FC = () => {
             : `${Math.round(reminder.minutes * 60)} seconds`;
 
         if (reminder.type === 'one-time') {
-            setOneTimeReminder(reminder.minutes, fallbackTask);
+            setOneTimeReminder(reminder.minutes, fallbackTask, taskListMeta);
         } else {
             // Add a message for recurring check-ins
             setMessages(prev => [...prev, {
                 sender: 'ai',
-                text: `✨ I'll check in with you every ${timeDisplay}. Let's do this!`
+                text: `✨ I'll check in with you every ${timeDisplay}. Let's do this!`,
+                ...taskListMeta,
             }]);
             startRecurringCheckin(reminder.minutes, fallbackTask);
         }
@@ -317,15 +345,16 @@ const App: React.FC = () => {
             // Mark streaming as complete (keeps showing last text until we add message)
             setStreamingComplete(true);
             
+            const taskUpdateResult = applyTaskUpdate(taskUpdate, newTask, Boolean(reminder));
+            const taskListMeta = getTaskListMessageMeta(taskUpdateResult);
+
             // Now add the final message
-            setMessages(prev => [...prev, { sender: 'ai', text }]);
+            setMessages(prev => [...prev, { sender: 'ai', text, ...taskListMeta }]);
             setStreamingText('');
             setStreamingComplete(false);
 
-            const reminderTask = applyTaskUpdate(taskUpdate, newTask, Boolean(reminder));
-
             // Let AI decide the reminder configuration via tool calling
-            handleReminderConfig(reminder, reminderTask || newTask);
+            handleReminderConfig(reminder, taskUpdateResult.currentTitle || newTask, taskListMeta);
 
         } catch {
             await appendLocalAiMessageWithStreaming("To use Focus Fairy, please add your own API key in Settings. Don't worry, you can use free-tier keys!");
@@ -360,15 +389,16 @@ const App: React.FC = () => {
             // Mark streaming as complete (keeps showing last text until we add message)
             setStreamingComplete(true);
             
+            const taskUpdateResult = applyTaskUpdate(taskUpdate, userMessage, Boolean(reminder));
+            const taskListMeta = getTaskListMessageMeta(taskUpdateResult);
+
             // Now add the final message
-            setMessages(prev => [...prev, { sender: 'ai', text }]);
+            setMessages(prev => [...prev, { sender: 'ai', text, ...taskListMeta }]);
             setStreamingText('');
             setStreamingComplete(false);
 
-            const reminderTask = applyTaskUpdate(taskUpdate, userMessage, Boolean(reminder));
-
             // Let AI decide the reminder configuration via tool calling
-            handleReminderConfig(reminder, reminderTask || currentTaskTitle || task);
+            handleReminderConfig(reminder, taskUpdateResult.currentTitle || currentTaskTitle || task, taskListMeta);
 
         } catch {
             await appendLocalAiMessageWithStreaming("I'm having trouble responding right now. Let's try again in a moment.");
@@ -385,7 +415,6 @@ const App: React.FC = () => {
                 <ChatInterface
                     task={task}
                     currentTask={currentTaskTitle}
-                    sessionTasks={sessionTaskState.tasks}
                     messages={messages}
                     onSendMessage={handleSendMessage}
                     isLoading={isLoading}

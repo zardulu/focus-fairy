@@ -317,10 +317,9 @@ body {
 .chat-view-wrapper {
   position: relative;
   width: 100%;
-  height: 280px;
-  /* Fixed height chat window */
+  min-height: 280px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
 }
 
@@ -330,8 +329,9 @@ body {
   flex-direction: column;
   gap: 8px;
   width: 100%;
-  height: 100%;
-  justify-content: center;
+  min-height: 280px;
+  justify-content: flex-start;
+  padding-top: 44px;
 }
 
 /* User message row - plain text at top, aligned with input bounds */
@@ -363,6 +363,18 @@ body {
   gap: 0;
 }
 
+.task-list-container {
+  padding-left: 172px;
+  padding-right: 88px;
+  margin-top: -24px;
+  margin-bottom: 16px;
+}
+
+.task-list-panel {
+  max-width: 356px;
+  width: 100%;
+}
+
 /* Desktop alignment: reserve space on the right of the AI row equal to the send
    button (44px) + form gap (12px) so the bubble's right edge aligns with the
    input field's right edge (matching the left-edge alignment). */
@@ -376,7 +388,7 @@ body {
 .chat-view-wrapper .nav-arrows {
   position: absolute;
   right: 12px;
-  top: 50%;
+  top: 140px;
   transform: translateY(-50%);
 }
 
@@ -456,6 +468,7 @@ body {
   /* Adjust nav arrows - align with button center */
   .chat-view-wrapper .nav-arrows {
     right: 32px; /* 20px padding + 20px (half button) - 10px (approx half arrows) */
+    top: 100px;
   }
 
   /* Reduce gap between fairy and bubble on mobile */
@@ -463,9 +476,23 @@ body {
     margin-left: -6px;
   }
 
+  .task-list-container {
+    padding-left: 102px;
+    padding-right: 84px;
+  }
+
+  .task-list-panel {
+    max-width: calc(100vw - 192px);
+  }
+
   /* Reduce chat wrapper height - but not for InitialTaskInput which uses auto height */
   .chat-view-wrapper {
-    height: 200px;
+    min-height: 200px;
+  }
+
+  .chat-pair-container {
+    min-height: 200px;
+    padding-top: 28px;
   }
 
   /* InitialTaskInput specific - add side padding on mobile */

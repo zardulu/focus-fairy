@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import type { ChatMessage, SessionTask } from '../types';
+import type { ChatMessage } from '../types';
 import StreamingText from './StreamingText';
 
 interface ChatInterfaceProps {
     task: string;
     currentTask: string;
-    sessionTasks: SessionTask[];
     messages: ChatMessage[];
     onSendMessage: (message: string) => void;
     isLoading: boolean;
@@ -14,9 +13,10 @@ interface ChatInterfaceProps {
     onApiKeyClick?: () => void;
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, sessionTasks, messages, onSendMessage, isLoading, streamingText = '', streamingComplete = false, onApiKeyClick }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messages, onSendMessage, isLoading, streamingText = '', streamingComplete = false, onApiKeyClick }) => {
     const [inputMessage, setInputMessage] = useState('');
     const [viewOffset, setViewOffset] = useState(0); // 0 = latest, negative = older
+    const [isTaskListOpen, setIsTaskListOpen] = useState(true);
 
     // Character limit for input
     const MAX_INPUT_CHARS = 280;
@@ -105,6 +105,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, sessio
     const showStreamParticles =
         isLoading && streamingText.length > 0 && !streamingComplete;
     const displayedCurrentTask = currentTask || task;
+    const taskListForMessage = aiMessage?.taskListSnapshot || [];
+    const currentTaskForMessage = aiMessage?.currentTaskSnapshot || displayedCurrentTask;
+    const showTaskListForMessage = Boolean(aiMessage?.showTaskList && taskListForMessage.length > 0 && !showLiveAiText);
 
     return (
         <div
@@ -168,54 +171,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, sessio
                     Focus Fairy ✨
                 </h1>
 
-                <section
-                    className="w-full rounded-2xl p-3 sm:p-4 mt-4 mb-4 border"
-                    aria-label="Current session tasks"
-                    style={{
-                        borderColor: 'var(--border-light)',
-                        backgroundColor: 'rgba(255, 250, 252, 0.8)'
-                    }}
-                >
-                    <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>
-                        Current task
-                    </p>
-                    <p className="text-sm font-medium mb-3" style={{ color: 'var(--text-dark)' }}>
-                        {displayedCurrentTask || 'No current task yet'}
-                    </p>
-
-                    <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>
-                        Task list
-                    </p>
-                    {sessionTasks.length > 0 ? (
-                        <ul className="flex flex-col gap-2">
-                            {sessionTasks.map(sessionTask => {
-                                const isCurrent = sessionTask.title === displayedCurrentTask;
-
-                                return (
-                                    <li
-                                        key={sessionTask.id}
-                                        className="flex items-start gap-2 text-sm rounded-xl px-3 py-2"
-                                        style={{
-                                            color: 'var(--text-dark)',
-                                            backgroundColor: isCurrent ? 'var(--accent-pink-light)' : 'white',
-                                            border: `1px solid ${isCurrent ? 'var(--accent-pink)' : 'var(--border-light)'}`,
-                                        }}
-                                    >
-                                        <span aria-hidden="true" style={{ color: isCurrent ? 'var(--accent-pink)' : 'var(--text-muted)' }}>
-                                            {isCurrent ? '•' : '○'}
-                                        </span>
-                                        <span>{sessionTask.title}</span>
-                                    </li>
-                                );
-                            })}
-                        </ul>
-                    ) : (
-                        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                            Tasks will appear here as Focus Fairy detects them.
-                        </p>
-                    )}
-                </section>
-
                 {/* Chat View Container */}
                 <div className="chat-view-wrapper w-full mb-0">
                     <div className="chat-pair-container">
@@ -251,6 +206,61 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, sessio
                                 </div>
                             )}
                         </div>
+
+                        {showTaskListForMessage ? (
+                            <section
+                                className="task-list-container w-full animate-fadeIn"
+                                aria-label="Current session tasks"
+                            >
+                                <div
+                                    className="task-list-panel rounded-xl px-3 py-2 border"
+                                    style={{
+                                        borderColor: 'var(--accent-pink)',
+                                        backgroundColor: 'var(--bg-white)'
+                                    }}
+                                >
+                                    <button
+                                        type="button"
+                                        className="w-full flex items-center justify-between gap-3 text-left"
+                                        onClick={() => setIsTaskListOpen(prev => !prev)}
+                                        aria-expanded={isTaskListOpen}
+                                        aria-controls="session-task-list"
+                                    >
+                                        <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
+                                            Current: <span className="font-medium" style={{ color: 'var(--text-dark)' }}>{currentTaskForMessage}</span>
+                                        </span>
+                                        <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
+                                            {taskListForMessage.length} task{taskListForMessage.length === 1 ? '' : 's'} {isTaskListOpen ? '↑' : '↓'}
+                                        </span>
+                                    </button>
+                                    <div
+                                        id="session-task-list"
+                                        hidden={!isTaskListOpen}
+                                    >
+                                        <ul className="flex flex-col gap-1.5 mt-2 pt-2 border-t" style={{ borderColor: 'var(--accent-pink)' }}>
+                                            {taskListForMessage.map(sessionTask => {
+                                                const isCurrent = sessionTask.title === currentTaskForMessage;
+
+                                                return (
+                                                    <li
+                                                        key={sessionTask.id}
+                                                        className="text-xs leading-snug flex items-start gap-2"
+                                                        style={{ color: isCurrent ? 'var(--text-dark)' : 'var(--text-muted)' }}
+                                                        title={sessionTask.title}
+                                                    >
+                                                        <span aria-hidden="true" className="mt-0.5">
+                                                            {isCurrent ? '•' : '○'}
+                                                        </span>
+                                                        <span className={isCurrent ? 'font-medium' : ''}>{sessionTask.title}</span>
+                                                    </li>
+                                                );
+                                            })}
+                                        </ul>
+                                    </div>
+                                </div>
+                            </section>
+                        ) : null}
+
                     </div>
 
                     {/* Navigation arrows - fixed position */}
