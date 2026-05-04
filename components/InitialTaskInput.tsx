@@ -96,7 +96,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
             <div className="flex flex-col items-center w-full" style={{ maxWidth: '600px' }}>
                 {/* Title */}
                 <h1
-                    className="font-title text-3xl sm:text-4xl font-semibold italic mb-6 sm:mb-10"
+                    className="font-title text-3xl sm:text-4xl font-semibold italic mb-0"
                     style={{ color: 'var(--text-dark)' }}
                 >
                 {/* Chat View Container */}
@@ -104,7 +104,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                 </h1>
 
                 {/* Fairy and Speech Bubble Container */}
-                <div className="chat-view-wrapper w-full mb-8" style={{ height: 'auto', minHeight: '120px' }}>
+                <div className="chat-view-wrapper w-full mb-0">
                     <div className="chat-pair-container">
                         {/* AI Message - with fairy and bubble */}
                         <div className="ai-message-row">
