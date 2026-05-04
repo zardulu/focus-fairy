@@ -375,6 +375,21 @@ body {
   width: 100%;
 }
 
+.task-action-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.task-action-status-check {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+}
+
 /* Desktop alignment: reserve space on the right of the AI row equal to the send
    button (44px) + form gap (12px) so the bubble's right edge aligns with the
    input field's right edge (matching the left-edge alignment). */

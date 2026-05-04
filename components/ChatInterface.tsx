@@ -87,10 +87,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messag
     const isStreaming = isLoading && streamingText.length > 0;
     const showStreamingText = isStreaming || streamingComplete;
     const showLiveAiText = isViewingLatest && showStreamingText;
+    const waitingForLatestAiResponse = isLoading && isViewingLatest && !showLiveAiText;
     
-    // Get AI message - but when streaming on latest view, don't show the last message to avoid duplication
-    const aiMessage = showLiveAiText
-        ? null  // Don't show previous AI message while streaming
+    // Get AI message - but while waiting/streaming on latest view, hide the previous AI turn immediately.
+    const aiMessage = showLiveAiText || waitingForLatestAiResponse
+        ? null
         : isViewingLatest
             ? aiMessages[aiMessages.length - 1] || null
             : aiMessages[currentPairIndex] || null;
@@ -108,6 +109,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messag
     const taskListForMessage = aiMessage?.taskListSnapshot || [];
     const currentTaskForMessage = aiMessage?.currentTaskSnapshot || displayedCurrentTask;
     const showTaskListForMessage = Boolean(aiMessage?.showTaskList && taskListForMessage.length > 0 && !showLiveAiText);
+    const showTaskActionStatus = Boolean(aiMessage?.showTaskActionStatus && !showLiveAiText);
+    const taskActionStatusText = aiMessage?.taskActionStatusText || 'Updated';
 
     return (
         <div
@@ -206,6 +209,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messag
                                 </div>
                             )}
                         </div>
+
+                        {showTaskActionStatus ? (
+                            <section
+                                className="task-list-container w-full animate-fadeIn"
+                                aria-label="Task and timer status"
+                            >
+                                <div className="task-action-status">
+                                    <span className="task-action-status-check" aria-hidden="true">✓</span>
+                                    <span>{taskActionStatusText}</span>
+                                </div>
+                            </section>
+                        ) : null}
 
                         {showTaskListForMessage ? (
                             <section

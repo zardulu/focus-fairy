@@ -31,6 +31,13 @@ const createSessionTaskId = () => {
     return `task-${Date.now()}-${randomPart}`;
 };
 
+const createChatMessageId = () => {
+    const randomPart = Math.random().toString(36).slice(2, 8);
+    return `msg-${Date.now()}-${randomPart}`;
+};
+
+const waitForActionStatus = () => new Promise(resolve => setTimeout(resolve, 300));
+
 const resolveCurrentTaskTitle = (taskUpdate: TaskUpdate | null, fallbackTask: string) => {
     const explicitCurrent = taskUpdate?.currentTaskTitle?.trim();
     if (explicitCurrent) return explicitCurrent;
@@ -156,6 +163,33 @@ const App: React.FC = () => {
         };
     };
 
+    const getTaskActionStatusText = (taskUpdateResult: TaskUpdateResult, reminder: ReminderConfig | null) => {
+        const actions: string[] = [];
+
+        if (taskUpdateResult.shouldShowTaskList) {
+            actions.push(taskUpdateResult.tasks.length === 1 ? 'Added task to task list' : 'Added tasks to task list');
+        }
+
+        if (reminder) {
+            actions.push('Set timer');
+        }
+
+        return actions.join(' and ');
+    };
+
+    const finishTaskActionStatus = useCallback(async (messageId: string, taskListMeta: Partial<ChatMessage>) => {
+        await waitForActionStatus();
+        setMessages(prev => prev.map(message => {
+            if (message.id !== messageId) return message;
+
+            return {
+                ...message,
+                showTaskActionStatus: true,
+                ...taskListMeta,
+            };
+        }));
+    }, []);
+
     useEffect(() => {
         // Load saved provider and keys
         const savedProvider = localStorage.getItem('ai_provider') as AIProvider;
@@ -234,6 +268,7 @@ const App: React.FC = () => {
             ? ''
             : ' (⚠️ Enable notifications in your browser for alerts!)';
         setMessages(prev => [...prev, {
+            id: createChatMessageId(),
             sender: 'ai',
             text: `⏰ Got it! I'll remind you in ${timeDisplay}.${notifStatus}`,
             ...taskListMeta,
@@ -288,7 +323,7 @@ const App: React.FC = () => {
     }, [sendCheckin]);
 
     // Handle reminder configuration from AI tool calls
-    const handleReminderConfig = useCallback((reminder: ReminderConfig | null, fallbackTask: string, taskListMeta: Partial<ChatMessage> = {}) => {
+    const handleReminderConfig = useCallback((reminder: ReminderConfig | null, fallbackTask: string, messageMeta: Partial<ChatMessage> = {}) => {
         if (!reminder) {
             return;
         }
@@ -298,9 +333,10 @@ const App: React.FC = () => {
 
         if (currentPermission !== 'granted') {
             setMessages(prev => [...prev, {
+                id: createChatMessageId(),
                 sender: 'ai',
                 text: `⚠️ Enable notifications in your browser to get check-in reminders!`,
-                ...taskListMeta,
+                ...messageMeta,
             }]);
             return;
         }
@@ -310,13 +346,14 @@ const App: React.FC = () => {
             : `${Math.round(reminder.minutes * 60)} seconds`;
 
         if (reminder.type === 'one-time') {
-            setOneTimeReminder(reminder.minutes, fallbackTask, taskListMeta);
+            setOneTimeReminder(reminder.minutes, fallbackTask, messageMeta);
         } else {
             // Add a message for recurring check-ins
             setMessages(prev => [...prev, {
+                id: createChatMessageId(),
                 sender: 'ai',
                 text: `✨ I'll check in with you every ${timeDisplay}. Let's do this!`,
-                ...taskListMeta,
+                ...messageMeta,
             }]);
             startRecurringCheckin(reminder.minutes, fallbackTask);
         }
@@ -347,14 +384,33 @@ const App: React.FC = () => {
             
             const taskUpdateResult = applyTaskUpdate(taskUpdate, newTask, Boolean(reminder));
             const taskListMeta = getTaskListMessageMeta(taskUpdateResult);
+            const actionStatusText = getTaskActionStatusText(taskUpdateResult, reminder);
+            const shouldShowTaskAction = actionStatusText.length > 0;
+            const actionMessageId = createChatMessageId();
 
             // Now add the final message
-            setMessages(prev => [...prev, { sender: 'ai', text, ...taskListMeta }]);
+            setMessages(prev => [...prev, {
+                id: reminder && shouldShowTaskAction ? createChatMessageId() : actionMessageId,
+                sender: 'ai',
+                text,
+                showTaskActionStatus: !reminder && shouldShowTaskAction,
+                taskActionStatusText: !reminder && shouldShowTaskAction ? actionStatusText : undefined,
+                ...(!reminder && !shouldShowTaskAction ? taskListMeta : {}),
+            }]);
             setStreamingText('');
             setStreamingComplete(false);
 
             // Let AI decide the reminder configuration via tool calling
-            handleReminderConfig(reminder, taskUpdateResult.currentTitle || newTask, taskListMeta);
+            handleReminderConfig(
+                reminder,
+                taskUpdateResult.currentTitle || newTask,
+                shouldShowTaskAction ? { id: actionMessageId, showTaskActionStatus: true, taskActionStatusText: actionStatusText } : taskListMeta
+            );
+            setIsLoading(false);
+
+            if (shouldShowTaskAction) {
+                await finishTaskActionStatus(actionMessageId, taskListMeta);
+            }
 
         } catch {
             await appendLocalAiMessageWithStreaming("To use Focus Fairy, please add your own API key in Settings. Don't worry, you can use free-tier keys!");
@@ -391,14 +447,33 @@ const App: React.FC = () => {
             
             const taskUpdateResult = applyTaskUpdate(taskUpdate, userMessage, Boolean(reminder));
             const taskListMeta = getTaskListMessageMeta(taskUpdateResult);
+            const actionStatusText = getTaskActionStatusText(taskUpdateResult, reminder);
+            const shouldShowTaskAction = actionStatusText.length > 0;
+            const actionMessageId = createChatMessageId();
 
             // Now add the final message
-            setMessages(prev => [...prev, { sender: 'ai', text, ...taskListMeta }]);
+            setMessages(prev => [...prev, {
+                id: reminder && shouldShowTaskAction ? createChatMessageId() : actionMessageId,
+                sender: 'ai',
+                text,
+                showTaskActionStatus: !reminder && shouldShowTaskAction,
+                taskActionStatusText: !reminder && shouldShowTaskAction ? actionStatusText : undefined,
+                ...(!reminder && !shouldShowTaskAction ? taskListMeta : {}),
+            }]);
             setStreamingText('');
             setStreamingComplete(false);
 
             // Let AI decide the reminder configuration via tool calling
-            handleReminderConfig(reminder, taskUpdateResult.currentTitle || currentTaskTitle || task, taskListMeta);
+            handleReminderConfig(
+                reminder,
+                taskUpdateResult.currentTitle || currentTaskTitle || task,
+                shouldShowTaskAction ? { id: actionMessageId, showTaskActionStatus: true, taskActionStatusText: actionStatusText } : taskListMeta
+            );
+            setIsLoading(false);
+
+            if (shouldShowTaskAction) {
+                await finishTaskActionStatus(actionMessageId, taskListMeta);
+            }
 
         } catch {
             await appendLocalAiMessageWithStreaming("I'm having trouble responding right now. Let's try again in a moment.");
