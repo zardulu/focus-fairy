@@ -115,7 +115,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messag
     return (
         <div
             className="min-h-screen w-full flex flex-col items-center justify-center p-4 relative"
-            style={{ backgroundColor: 'var(--bg-white)' }}
+            style={{ backgroundColor: 'var(--bg-cream)' }}
         >
             {/* Info Tooltip and Settings Button */}
             <div className="absolute top-4 right-4 sm:top-6 sm:right-6 flex items-center gap-2 sm:gap-3">
@@ -139,7 +139,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messag
                     <div
                         className="absolute right-0 top-10 w-64 sm:w-72 p-3 sm:p-4 rounded-xl shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50"
                         style={{
-                            backgroundColor: 'var(--bg-white)',
+                            backgroundColor: 'var(--bg-warm)',
                             border: '1px solid var(--border-light)'
                         }}
                     >
@@ -231,7 +231,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messag
                                     className="task-list-panel rounded-xl px-3 py-2 border"
                                     style={{
                                         borderColor: 'var(--accent-pink)',
-                                        backgroundColor: 'var(--bg-white)'
+                                        backgroundColor: 'var(--bg-warm)'
                                     }}
                                 >
                                     <button

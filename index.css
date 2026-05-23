@@ -4,6 +4,7 @@
   --bg-white: #FFFFFF;
   --bg-cream: #F5F0E8;
   --bg-warm: #F8F5F0;
+  /* --bg-warm: #F3F3F3; */
   --text-dark: #1A1A1A;
   --text-muted: #888888;
   --accent-pink: #E8C4C4;
@@ -21,7 +22,7 @@
 
 body {
   font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  background-color: var(--bg-white);
+  background-color: var(--bg-cream);
   color: var(--text-dark);
   min-height: 100vh;
 }
@@ -63,8 +64,8 @@ body {
   border-radius: 9999px;
   padding: 20px 32px;
   max-width: 420px;
-  border: 1px solid var(--accent-pink);
-  box-shadow: 0 2px 8px var(--accent-pink-light);
+  /* border: 1px solid var(--accent-pink); */
+  box-shadow: 0 2px 4px var(--accent-pink);
 }
 
 /* .speech-bubble-tail {
@@ -96,7 +97,7 @@ body {
 
 .input-field:focus {
   border-color: var(--accent-pink);
-  box-shadow: 0 4px 12px var(--accent-pink-light);
+  box-shadow: 0 2px 4px var(--accent-pink);
 }
 
 .input-field::placeholder {

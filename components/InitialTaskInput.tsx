@@ -13,7 +13,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
 
     // Character limit for input
     const MAX_INPUT_CHARS = 280;
-    const INTRO_MESSAGE = "Hi! I'm Focus Fairy! What task would you like to focus on today? I'll help break it down into manageable steps.";
+    const INTRO_MESSAGE = "Hi! I'm Focus Fairy! I'll help you focus on your daily tasks and check in on your progress. What tasks would you like to focus on today?.";
 
     useEffect(() => {
         let isCancelled = false;
@@ -43,7 +43,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
     return (
         <div
             className="min-h-screen w-full flex flex-col items-center justify-center p-4 relative"
-            style={{ backgroundColor: 'var(--bg-white)' }}
+            style={{ backgroundColor: 'var(--bg-warm)' }}
         >
             {/* Info Tooltip and Settings Button */}
             <div className="absolute top-4 right-4 sm:top-6 sm:right-6 flex items-center gap-2 sm:gap-3">
@@ -67,7 +67,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                     <div
                         className="absolute right-0 top-10 w-64 sm:w-72 p-3 sm:p-4 rounded-xl shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50"
                         style={{
-                            backgroundColor: 'var(--bg-white)',
+                            backgroundColor: 'var(--bg-warm)',
                             border: '1px solid var(--border-light)'
                         }}
                     >

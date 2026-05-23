@@ -513,7 +513,7 @@ const App: React.FC = () => {
                     onClick={() => setShowApiKeyModal(false)}
                 >
                     <div
-                        className="bg-white rounded-2xl p-4 sm:p-6 max-w-md w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto"
+                        className="bg-warm rounded-2xl p-4 sm:p-6 max-w-md w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <h2 className="font-title text-2xl font-semibold mb-4" style={{ color: 'var(--text-dark)' }}>
@@ -529,7 +529,7 @@ const App: React.FC = () => {
                                 <button
                                     key={provider.id}
                                     onClick={() => setSelectedProvider(provider.id)}
-                                    className="flex items-center gap-3 p-3 rounded-xl border transition-all text-left"
+                                    className="flex items-center gap-3 p-3 rounded-xl transition-all text-left"
                                     style={{
                                         borderColor: selectedProvider === provider.id ? 'var(--accent-pink)' : 'var(--border-light)',
                                         backgroundColor: selectedProvider === provider.id ? 'var(--accent-pink-light)' : 'white'
