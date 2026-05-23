@@ -104,6 +104,10 @@ body {
   color: var(--text-muted);
 }
 
+.input-form-container {
+  padding-left: 140px;
+}
+
 /* Dark button */
 .btn-dark {
   background: var(--btn-dark);
@@ -512,13 +516,13 @@ body {
   }
 
   /* InitialTaskInput specific - add side padding on mobile */
-  .chat-view-wrapper[style*="height: auto"] {
-    padding-left: 20px;
-    padding-right: 20px;
+  .initial-chat-view {
+    padding-left: 0;
+    padding-right: 0;
   }
 
   /* InitialTaskInput - adjust nav arrows for the padded container */
-  .chat-view-wrapper[style*="height: auto"] .nav-arrows {
+  .initial-chat-view .nav-arrows {
     right: 12px;
   }
 
@@ -526,14 +530,14 @@ body {
      send button (40px) + form gap (8px) on mobile so the intro bubble's right
      edge aligns with the input field's right edge. ChatInterface bubbles on
      mobile are intentionally left untouched. */
-  .chat-view-wrapper[style*="height: auto"] .ai-message-row {
+  .initial-chat-view .ai-message-row {
     padding-right: 48px;
   }
 
   /* InitialTaskInput - give the intro bubble more breathing room so the text
      doesn't crowd the rounded pill edges on mobile. */
-  .chat-view-wrapper[style*="height: auto"] .speech-bubble-ai {
-    padding: 16px 24px;
+  .initial-chat-view .speech-bubble-ai {
+    padding: 18px 26px;
   }
 
   /* User message row - align with right edge of input field (before button) */
@@ -549,8 +553,34 @@ body {
 
   /* Input form - align right edge with send button on mobile */
   .input-form-container {
-    padding-left: 20px !important;
-    padding-right: 20px !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .initial-input-form {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .input-form-container form {
+    position: relative;
+    justify-content: center;
+    width: calc(100% - 48px);
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .input-form-container .input-field {
+    flex: 0 1 calc(100% - 88px);
+  }
+
+  .input-form-container .btn-send {
+    position: absolute;
+    right: 0;
+  }
+
+  .input-form-container > p {
+    padding-right: 48px;
   }
 
   /* Make input field smaller on mobile */

@@ -42,7 +42,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
 
     return (
         <div
-            className="min-h-screen w-full flex flex-col items-center justify-center p-4 relative"
+            className="min-h-screen w-full flex flex-col items-center justify-center px-0 py-4 sm:p-4 relative"
             style={{ backgroundColor: 'var(--bg-warm)' }}
         >
             {/* Info Tooltip and Settings Button */}
@@ -104,7 +104,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                 </h1>
 
                 {/* Fairy and Speech Bubble Container */}
-                <div className="chat-view-wrapper w-full mb-0">
+                <div className="chat-view-wrapper initial-chat-view w-full mb-0">
                     <div className="chat-pair-container">
                         {/* AI Message - with fairy and bubble */}
                         <div className="ai-message-row">
@@ -125,7 +125,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                 </div>
 
                 {/* Input Form */}
-                <div className="w-full input-form-container" style={{ paddingLeft: '140px' }}>
+                <div className="w-full input-form-container initial-input-form">
                     <form
                         onSubmit={handleSubmit}
                         className="flex items-center gap-2 sm:gap-3 w-full"

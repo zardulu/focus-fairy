@@ -114,7 +114,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messag
 
     return (
         <div
-            className="min-h-screen w-full flex flex-col items-center justify-center p-4 relative"
+            className="min-h-screen w-full flex flex-col items-center justify-center px-0 py-4 sm:p-4 relative"
             style={{ backgroundColor: 'var(--bg-cream)' }}
         >
             {/* Info Tooltip and Settings Button */}
