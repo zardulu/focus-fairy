@@ -2,11 +2,10 @@ import { generateText, streamText, LanguageModel, tool } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import { z } from 'zod';
+import { AIProvider } from '../types';
 
 // Streaming callback type
 export type StreamCallback = (chunk: string) => void;
-
-export type AIProvider = 'gemini' | 'openai' | 'openrouter' | 'groq';
 
 interface AIConfig {
     provider: AIProvider;

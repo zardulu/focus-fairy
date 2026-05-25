@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import type { ChatMessage } from '../types';
 import StreamingText from './StreamingText';
+import AuthButton from './AuthButton';
+import { useAuth } from '../contexts/AuthContext';
 
 interface ChatInterfaceProps {
     task: string;
@@ -14,6 +16,7 @@ interface ChatInterfaceProps {
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messages, onSendMessage, isLoading, streamingText = '', streamingComplete = false, onApiKeyClick }) => {
+    const { user } = useAuth();
     const [inputMessage, setInputMessage] = useState('');
     const [viewOffset, setViewOffset] = useState(0); // 0 = latest, negative = older
     const [isTaskListOpen, setIsTaskListOpen] = useState(true);
@@ -119,6 +122,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messag
         >
             {/* Info Tooltip and Settings Button */}
             <div className="absolute top-4 right-4 sm:top-6 sm:right-6 flex items-center gap-2 sm:gap-3">
+                {/* Auth Button */}
+                <AuthButton />
+
                 {/* Info Tooltip */}
                 <div className="relative group">
                     <button
@@ -149,7 +155,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messag
                         <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
                             A gentle focus companion that helps you focus on your tasks by checking in on your progress.
                             <strong> Bring your own API key</strong> (Gemini, OpenAI, etc).
-                            Chats are ephemeral and not saved anywhere. You will lose the chat if the page is refreshed or closed.
+                            {user ? ' Your chat history and AI provider settings are synced to your account.' : ' Chats are ephemeral. Sign in to save your history and settings across devices.'}
                             Keep this tab open for reliable check-in notifications.
                         </p>
                     </div>

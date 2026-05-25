@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import InitialTaskInput from './components/InitialTaskInput';
 import ChatInterface from './components/ChatInterface';
-import { ChatMessage, SessionTask } from './types';
-import { initializeChat, generateCheckinMessage, getCurrentTask, AIProvider, ReminderConfig, TaskUpdate, streamInitialResponse, streamContinueChat } from './services/aiService';
+import { ChatMessage, SessionTask, AIProvider } from './types';
+import { initializeChat, generateCheckinMessage, getCurrentTask, ReminderConfig, TaskUpdate, streamInitialResponse, streamContinueChat } from './services/aiService';
+import { useAuth } from './contexts/AuthContext';
+import * as dbService from './services/dbService';
 
 const DEFAULT_CHECKIN_MINUTES = 15;
 
@@ -49,6 +51,9 @@ const resolveCurrentTaskTitle = (taskUpdate: TaskUpdate | null, fallbackTask: st
 };
 
 const App: React.FC = () => {
+    const { user } = useAuth();
+    const userRef = useRef(user);
+
     const [task, setTask] = useState<string | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [sessionTaskState, setSessionTaskState] = useState<SessionTaskState>({
@@ -70,6 +75,11 @@ const App: React.FC = () => {
     const [activeTimer, setActiveTimer] = useState<number | null>(null); // Track active timer minutes
     const workerRef = useRef<Worker | null>(null);
     const currentTaskRef = useRef<string>(''); // Store current task for worker callback
+
+    // Keep userRef updated to avoid stale closures in worker callbacks
+    useEffect(() => {
+        userRef.current = user;
+    }, [user]);
 
     const currentSessionTask = useMemo(
         () => sessionTaskState.tasks.find(sessionTask => sessionTask.id === sessionTaskState.currentTaskId) ?? null,
@@ -129,12 +139,22 @@ const App: React.FC = () => {
         setSessionTaskState({ tasks, currentTaskId });
 
         currentTaskRef.current = currentTitle;
+
+        // Sync to Firebase if user is logged in
+        if (user) {
+            tasks.forEach(t => void dbService.saveTask(user.uid, t));
+            void dbService.saveChatState(user.uid, {
+                task: currentTitle || fallbackTask || task,
+                currentTaskId
+            });
+        }
+
         return {
             currentTitle,
             tasks,
             shouldShowTaskList: detectedTasks.some(detectedTask => detectedTask.title.trim().length > 0),
         };
-    }, [sessionTaskState]);
+    }, [sessionTaskState, user, task]);
 
     const appendLocalAiMessageWithStreaming = useCallback(async (text: string) => {
         setStreamingText('');
@@ -146,10 +166,15 @@ const App: React.FC = () => {
         }
 
         setStreamingComplete(true);
-        setMessages(prev => [...prev, { sender: 'ai', text }]);
+        const msgId = createChatMessageId();
+        const msg: ChatMessage = { id: msgId, sender: 'ai', text };
+        setMessages(prev => [...prev, msg]);
+        if (user) {
+            void dbService.saveMessage(user.uid, msg);
+        }
         setStreamingText('');
         setStreamingComplete(false);
-    }, []);
+    }, [user]);
 
     const getTaskListMessageMeta = (taskUpdateResult: TaskUpdateResult): Partial<ChatMessage> => {
         if (!taskUpdateResult.shouldShowTaskList || taskUpdateResult.tasks.length === 0) {
@@ -211,6 +236,72 @@ const App: React.FC = () => {
         }
     }, []);
 
+    // Sync remote data when user signs in/out
+    useEffect(() => {
+        if (!user) {
+            // User signed out: reset state to default
+            setTask(null);
+            setMessages([]);
+            setSessionTaskState({
+                tasks: [],
+                currentTaskId: null,
+            });
+            return;
+        }
+
+        const handleAuthSync = async () => {
+            try {
+                // 1. Sync settings if remote settings exist, otherwise upload local ones
+                const remoteSettings = await dbService.loadSettings(user.uid);
+                if (remoteSettings) {
+                    setSelectedProvider(remoteSettings.provider);
+                    setApiKeys(remoteSettings.apiKeys);
+                    localStorage.setItem('ai_provider', remoteSettings.provider);
+                    Object.entries(remoteSettings.apiKeys).forEach(([prov, key]) => {
+                        localStorage.setItem(`${prov}_api_key`, key);
+                    });
+                } else {
+                    await dbService.saveSettings(user.uid, {
+                        provider: selectedProvider,
+                        apiKeys,
+                    });
+                }
+
+                // 2. Load remote messages, tasks, and state
+                const remoteMessages = await dbService.loadMessages(user.uid);
+                const remoteTasks = await dbService.loadTasks(user.uid);
+                const remoteState = await dbService.loadChatState(user.uid);
+
+                // Migration: If user had active anonymous messages and signs in mid-session,
+                // save their current progress to Firestore.
+                if (messages.length > 0 && remoteMessages.length === 0) {
+                    const localChatState = { task, currentTaskId: sessionTaskState.currentTaskId };
+                    await dbService.syncLocalDataToFirebase(user.uid, messages, sessionTaskState.tasks, localChatState);
+                } else {
+                    // Otherwise restore user's remote thread
+                    if (remoteMessages.length > 0) {
+                        setMessages(remoteMessages);
+                    }
+                    if (remoteTasks.length > 0 || remoteState?.currentTaskId) {
+                        setSessionTaskState({
+                            tasks: remoteTasks,
+                            currentTaskId: remoteState?.currentTaskId || null
+                        });
+                    }
+                    if (remoteState?.task) {
+                        setTask(remoteState.task);
+                        currentTaskRef.current = remoteState.task;
+                    }
+                }
+            } catch (error) {
+                console.error('Error syncing auth state data:', error);
+            }
+        };
+
+        void handleAuthSync();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user]);
+
     const handleSaveSettings = () => {
         localStorage.setItem('ai_provider', selectedProvider);
         localStorage.setItem('gemini_api_key', apiKeys.gemini.trim());
@@ -218,6 +309,13 @@ const App: React.FC = () => {
         localStorage.setItem('openrouter_api_key', apiKeys.openrouter.trim());
         localStorage.setItem('groq_api_key', apiKeys.groq.trim());
         setShowApiKeyModal(false);
+
+        if (user) {
+            void dbService.saveSettings(user.uid, {
+                provider: selectedProvider,
+                apiKeys
+            });
+        }
     };
 
     // Prevent concurrent API calls
@@ -245,7 +343,13 @@ const App: React.FC = () => {
             }
 
             // Add message to chat
-            setMessages(prev => [...prev, { sender: 'ai', text: `🔔 ${checkinMessage}` }]);
+            const msgId = createChatMessageId();
+            const msg: ChatMessage = { id: msgId, sender: 'ai', text: `🔔 ${checkinMessage}` };
+            setMessages(prev => [...prev, msg]);
+            const currentUser = userRef.current;
+            if (currentUser) {
+                void dbService.saveMessage(currentUser.uid, msg);
+            }
         } catch {
             /* check-in message failed; chat already handles missing keys elsewhere */
         } finally {
@@ -267,18 +371,23 @@ const App: React.FC = () => {
         const notifStatus = Notification.permission === 'granted'
             ? ''
             : ' (⚠️ Enable notifications in your browser for alerts!)';
-        setMessages(prev => [...prev, {
-            id: createChatMessageId(),
+        const msgId = createChatMessageId();
+        const msg: ChatMessage = {
+            id: msgId,
             sender: 'ai',
             text: `⏰ Got it! I'll remind you in ${timeDisplay}.${notifStatus}`,
             ...taskListMeta,
-        }]);
+        };
+        setMessages(prev => [...prev, msg]);
+        if (user) {
+            void dbService.saveMessage(user.uid, msg);
+        }
 
         // Start worker timer
         if (workerRef.current) {
             workerRef.current.postMessage({ action: 'start', milliseconds, type: 'one-time' });
         }
-    }, []);
+    }, [user]);
 
     // Recurring check-in - using Web Worker for reliable background execution
     const startRecurringCheckin = useCallback((minutes: number, fallbackTask: string) => {
@@ -332,12 +441,17 @@ const App: React.FC = () => {
         const currentPermission = Notification.permission;
 
         if (currentPermission !== 'granted') {
-            setMessages(prev => [...prev, {
-                id: createChatMessageId(),
+            const msgId = createChatMessageId();
+            const msg: ChatMessage = {
+                id: msgId,
                 sender: 'ai',
                 text: `⚠️ Enable notifications in your browser to get check-in reminders!`,
                 ...messageMeta,
-            }]);
+            };
+            setMessages(prev => [...prev, msg]);
+            if (user) {
+                void dbService.saveMessage(user.uid, msg);
+            }
             return;
         }
 
@@ -349,22 +463,33 @@ const App: React.FC = () => {
             setOneTimeReminder(reminder.minutes, fallbackTask, messageMeta);
         } else {
             // Add a message for recurring check-ins
-            setMessages(prev => [...prev, {
-                id: createChatMessageId(),
+            const msgId = createChatMessageId();
+            const msg: ChatMessage = {
+                id: msgId,
                 sender: 'ai',
                 text: `✨ I'll check in with you every ${timeDisplay}. Let's do this!`,
                 ...messageMeta,
-            }]);
+            };
+            setMessages(prev => [...prev, msg]);
+            if (user) {
+                void dbService.saveMessage(user.uid, msg);
+            }
             startRecurringCheckin(reminder.minutes, fallbackTask);
         }
-    }, [setOneTimeReminder, startRecurringCheckin]);
+    }, [setOneTimeReminder, startRecurringCheckin, user]);
 
     const handleTaskSubmit = async (newTask: string) => {
         if (!newTask.trim()) return;
         setTask(newTask);
 
         // Immediately show the user's message before waiting for AI response
-        setMessages([{ sender: 'user', text: newTask }]);
+        const userMsgId = createChatMessageId();
+        const userMessage: ChatMessage = { id: userMsgId, sender: 'user', text: newTask };
+        setMessages([userMessage]);
+        if (user) {
+            void dbService.saveMessage(user.uid, userMessage);
+            void dbService.saveChatState(user.uid, { task: newTask, currentTaskId: null });
+        }
         setIsLoading(true);
         setStreamingText('');
         setStreamingComplete(false);
@@ -389,14 +514,19 @@ const App: React.FC = () => {
             const actionMessageId = createChatMessageId();
 
             // Now add the final message
-            setMessages(prev => [...prev, {
-                id: reminder && shouldShowTaskAction ? createChatMessageId() : actionMessageId,
+            const aiMessageId = reminder && shouldShowTaskAction ? createChatMessageId() : actionMessageId;
+            const aiMessage: ChatMessage = {
+                id: aiMessageId,
                 sender: 'ai',
                 text,
                 showTaskActionStatus: !reminder && shouldShowTaskAction,
                 taskActionStatusText: !reminder && shouldShowTaskAction ? actionStatusText : undefined,
                 ...(!reminder && !shouldShowTaskAction ? taskListMeta : {}),
-            }]);
+            };
+            setMessages(prev => [...prev, aiMessage]);
+            if (user) {
+                void dbService.saveMessage(user.uid, aiMessage);
+            }
             setStreamingText('');
             setStreamingComplete(false);
 
@@ -428,8 +558,12 @@ const App: React.FC = () => {
     const handleSendMessage = async (userMessage: string) => {
         if (!userMessage.trim() || !task) return;
 
-        const newMessages: ChatMessage[] = [...messages, { sender: 'user', text: userMessage }];
-        setMessages(newMessages);
+        const userMsgId = createChatMessageId();
+        const userMsg: ChatMessage = { id: userMsgId, sender: 'user', text: userMessage };
+        setMessages(prev => [...prev, userMsg]);
+        if (user) {
+            void dbService.saveMessage(user.uid, userMsg);
+        }
         setIsLoading(true);
         setStreamingText('');
         setStreamingComplete(false);
@@ -452,14 +586,19 @@ const App: React.FC = () => {
             const actionMessageId = createChatMessageId();
 
             // Now add the final message
-            setMessages(prev => [...prev, {
-                id: reminder && shouldShowTaskAction ? createChatMessageId() : actionMessageId,
+            const aiMessageId = reminder && shouldShowTaskAction ? createChatMessageId() : actionMessageId;
+            const aiMsg: ChatMessage = {
+                id: aiMessageId,
                 sender: 'ai',
                 text,
                 showTaskActionStatus: !reminder && shouldShowTaskAction,
                 taskActionStatusText: !reminder && shouldShowTaskAction ? actionStatusText : undefined,
                 ...(!reminder && !shouldShowTaskAction ? taskListMeta : {}),
-            }]);
+            };
+            setMessages(prev => [...prev, aiMsg]);
+            if (user) {
+                void dbService.saveMessage(user.uid, aiMsg);
+            }
             setStreamingText('');
             setStreamingComplete(false);
 
@@ -509,11 +648,19 @@ const App: React.FC = () => {
             {showApiKeyModal && (
                 <div
                     className="fixed inset-0 flex items-center justify-center z-50"
-                    style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)' }}
+                    style={{ 
+                        backgroundColor: 'rgba(0, 0, 0, 0.25)',
+                        backdropFilter: 'blur(8px)',
+                        WebkitBackdropFilter: 'blur(8px)'
+                    }}
                     onClick={() => setShowApiKeyModal(false)}
                 >
                     <div
-                        className="bg-warm rounded-2xl p-4 sm:p-6 max-w-md w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto"
+                        className="rounded-2xl p-4 sm:p-6 max-w-md w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto"
+                        style={{
+                            backgroundColor: 'var(--bg-warm)',
+                            border: '1px solid var(--border-light)'
+                        }}
                         onClick={(e) => e.stopPropagation()}
                     >
                         <h2 className="font-title text-2xl font-semibold mb-4" style={{ color: 'var(--text-dark)' }}>

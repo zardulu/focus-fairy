@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import StreamingText from './StreamingText';
+import AuthButton from './AuthButton';
+import { useAuth } from '../contexts/AuthContext';
 
 interface InitialTaskInputProps {
     onTaskSubmit: (task: string) => void;
@@ -8,6 +10,7 @@ interface InitialTaskInputProps {
 }
 
 const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoading, onApiKeyClick }) => {
+    const { user } = useAuth();
     const [task, setTask] = useState('');
     const [introText, setIntroText] = useState('');
 
@@ -47,6 +50,9 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
         >
             {/* Info Tooltip and Settings Button */}
             <div className="absolute top-4 right-4 sm:top-6 sm:right-6 flex items-center gap-2 sm:gap-3">
+                {/* Auth Button */}
+                <AuthButton />
+
                 {/* Info Tooltip */}
                 <div className="relative group">
                     <button
@@ -77,7 +83,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                         <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
                             A gentle focus companion that helps you focus on your tasks by checking in on your progress.
                             <strong> Bring your own API key</strong> (Gemini, OpenAI, etc).
-                            Chats are ephemeral and not saved anywhere. You will lose the chat if the page is refreshed or closed.
+                            {user ? ' Your chat history and AI provider settings are synced to your account.' : ' Chats are ephemeral. Sign in to save your history and settings across devices.'}
                             Keep this tab open for reliable check-in notifications.
                         </p>
                     </div>

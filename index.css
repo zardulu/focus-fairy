@@ -630,3 +630,64 @@ body {
     font-size: 12px;
   }
 }
+
+/* Authentication UI Components */
+.auth-btn {
+  border-radius: 9999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border-light);
+  outline: none;
+  font-family: inherit;
+}
+
+.auth-btn:hover {
+  border-color: var(--text-muted);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.auth-btn:active {
+  transform: translateY(0);
+}
+
+.auth-btn-signin {
+  height: 34px;
+}
+
+.auth-btn-user {
+  height: 34px;
+  padding: 3px 12px 3px 5px;
+}
+
+.auth-dropdown {
+  position: absolute;
+  right: 0;
+  top: 40px;
+  width: 210px;
+  border-radius: 14px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-dropdown-item {
+  width: 100%;
+  text-align: left;
+  padding: 10px 16px;
+  font-size: 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-family: inherit;
+}
+

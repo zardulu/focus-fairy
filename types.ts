@@ -1,5 +1,6 @@
 
 export type MessageSender = 'user' | 'ai';
+export type AIProvider = 'gemini' | 'openai' | 'openrouter' | 'groq';
 
 export interface ChatMessage {
   id?: string;
@@ -17,3 +18,9 @@ export interface SessionTask {
   title: string;
   createdAt: number;
 }
+
+export interface AISettings {
+  provider: AIProvider;
+  apiKeys: Record<AIProvider, string>;
+}
+
