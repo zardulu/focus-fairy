@@ -509,11 +509,19 @@ const App: React.FC = () => {
             {showApiKeyModal && (
                 <div
                     className="fixed inset-0 flex items-center justify-center z-50"
-                    style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)' }}
+                    style={{ 
+                        backgroundColor: 'rgba(0, 0, 0, 0.25)',
+                        backdropFilter: 'blur(8px)',
+                        WebkitBackdropFilter: 'blur(8px)'
+                    }}
                     onClick={() => setShowApiKeyModal(false)}
                 >
                     <div
-                        className="bg-warm rounded-2xl p-4 sm:p-6 max-w-md w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto"
+                        className="rounded-2xl p-4 sm:p-6 max-w-md w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto"
+                        style={{
+                            backgroundColor: 'var(--bg-warm)',
+                            border: '1px solid var(--border-light)'
+                        }}
                         onClick={(e) => e.stopPropagation()}
                     >
                         <h2 className="font-title text-2xl font-semibold mb-4" style={{ color: 'var(--text-dark)' }}>
