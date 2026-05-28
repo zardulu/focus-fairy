@@ -395,9 +395,38 @@ Use this for task list memory only. Do not call it for greetings, vague messages
 let conversationHistory: ChatMessage[] = [];
 let currentTask: string | null = null;
 
+// Session state: tracks what's already been recorded so the AI doesn't re-call tools
+let recordedTaskTitles: string[] = [];
+let sessionTimerActive = false;
+
+/** Build the full system prompt, injecting session context if tasks are already recorded. */
+function buildSystemPrompt(): string {
+    if (recordedTaskTitles.length === 0) {
+        return systemInstruction;
+    }
+
+    const taskList = recordedTaskTitles.map(t => `"${t}"`).join(', ');
+    const timerNote = sessionTimerActive
+        ? 'A recurring check-in timer is already running.'
+        : 'No timer is set yet.';
+
+    return `${systemInstruction}
+
+**ACTIVE SESSION CONTEXT** (auto-injected — do NOT repeat this to the user):
+- Tasks already recorded: ${taskList}. Current focus: "${currentTask || recordedTaskTitles[0]}".
+- ${timerNote}
+- Do NOT call recordTasks again for these existing tasks. Only call recordTasks if the user mentions a COMPLETELY NEW task.
+- Do NOT call setReminder again unless the user explicitly asks to change the timer.
+- You MUST respond with visible text. Do NOT respond with only a tool call and no text.
+- If the user asks for help, give them encouragement or a concrete starting tip for their current task.
+- If the user says they don't want to do it, gently acknowledge and ask if they want to switch tasks or take a break.`;
+}
+
 export const resetConversation = () => {
     conversationHistory = [];
     currentTask = null;
+    recordedTaskTitles = [];
+    sessionTimerActive = false;
 };
 
 export const getCurrentTask = (): string | null => currentTask;
@@ -521,6 +550,9 @@ export const streamInitialResponse = async (
 ): Promise<AIResponse> => {
     // Let the AI fully determine if this is a task, greeting, or off-topic message
     conversationHistory = [{ role: 'user', content: userInput }];
+    // Reset session state for a fresh conversation
+    recordedTaskTitles = [];
+    sessionTimerActive = false;
 
     console.log('[FocusFairy] === streamInitialResponse ===');
     console.log('[FocusFairy] History sent:', JSON.stringify(conversationHistory, null, 2));
@@ -531,7 +563,7 @@ export const streamInitialResponse = async (
     const result = streamText({
         model,
         maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS,
-        system: systemInstruction,
+        system: buildSystemPrompt(),
         messages: conversationHistory.map(m => ({
             role: m.role as 'user' | 'assistant',
             content: m.content,
@@ -546,6 +578,14 @@ export const streamInitialResponse = async (
 
     // Store in conversation history
     conversationHistory.push({ role: 'assistant', content: replyText });
+
+    // Update session state from tool calls
+    if (taskUpdate?.tasks) {
+        recordedTaskTitles = taskUpdate.tasks.map(t => t.title);
+    }
+    if (reminder) {
+        sessionTimerActive = true;
+    }
 
     // Store the AI-selected current task for generated check-ins.
     if (taskUpdate?.currentTaskTitle) {
@@ -566,15 +606,19 @@ export const streamContinueChat = async (
     conversationHistory.push({ role: 'user', content: message });
 
     console.log('[FocusFairy] === streamContinueChat ===');
+    console.log('[FocusFairy] Session state:', JSON.stringify({ recordedTaskTitles, sessionTimerActive, currentTask }));
     console.log('[FocusFairy] History sent:', JSON.stringify(conversationHistory, null, 2));
 
     const { provider, apiKey } = getConfig();
     const model = getModel(provider, apiKey);
 
+    const dynamicPrompt = buildSystemPrompt();
+    console.log('[FocusFairy] Session context injected:', recordedTaskTitles.length > 0 ? 'YES' : 'NO');
+
     const result = streamText({
         model,
         maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS,
-        system: systemInstruction,
+        system: dynamicPrompt,
         messages: conversationHistory.map(m => ({
             role: m.role as 'user' | 'assistant',
             content: m.content,
@@ -589,6 +633,18 @@ export const streamContinueChat = async (
 
     // Store in conversation history
     conversationHistory.push({ role: 'assistant', content: replyText });
+
+    // Update session state from tool calls
+    if (taskUpdate?.tasks) {
+        for (const t of taskUpdate.tasks) {
+            if (!recordedTaskTitles.includes(t.title)) {
+                recordedTaskTitles.push(t.title);
+            }
+        }
+    }
+    if (reminder) {
+        sessionTimerActive = true;
+    }
 
     // Update currentTask if AI detected a new current task.
     if (taskUpdate?.currentTaskTitle) {
