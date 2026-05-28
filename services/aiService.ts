@@ -63,13 +63,23 @@ function ensureStreamedAssistantText(
 ): string {
     const combined = (streamed || parsedFromMessage).trim();
     if (combined.length > 0) return combined;
+
+    // Build a context-aware fallback when the AI called tools but emitted no text
+    if (reminder && taskUpdate && taskUpdate.tasks.length > 0) {
+        const taskName = taskUpdate.currentTaskTitle || taskUpdate.tasks[0].title;
+        const timeDisplay = reminder.minutes >= 1
+            ? `every ${reminder.minutes} min`
+            : `every ${Math.round(reminder.minutes * 60)} sec`;
+        return `Alright, let's lock in on "${taskName}"! I'll check in ${timeDisplay} to keep you on track ✨`;
+    }
     if (reminder) {
-        return "Got it! I'll check in to keep you on track. You've got this! ✨";
+        return "Let's do this! I'll check in to keep you on track. You've got this ✨";
     }
     if (taskUpdate && taskUpdate.tasks.length > 0) {
-        return "Got it! I've added that to your focus list.";
+        const taskName = taskUpdate.currentTaskTitle || taskUpdate.tasks[0].title;
+        return `Nice, "${taskName}" is on the list! How long do you wanna work on it? ✨`;
     }
-    return "I'm here to help you focus! What would you like to work on?";
+    return "Hey! What would you like to focus on today? ✨";
 }
 
 /**
