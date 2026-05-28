@@ -212,15 +212,22 @@ async function streamAssistantReplyToUI(
         merged = fromMessages;
     }
 
+    console.log('[FocusFairy] Raw AI text:', JSON.stringify(merged));
+
     for (let i = 0; i < merged.length; i++) {
         onChunk(merged.slice(0, i + 1));
         await new Promise(resolve => setTimeout(resolve, 15));
     }
 
     const staticCalls = await result.staticToolCalls;
+    console.log('[FocusFairy] Tool calls:', JSON.stringify(staticCalls, null, 2));
+
     const reminder = extractReminderFromStaticToolCalls(staticCalls);
     const taskUpdate = extractTaskUpdateFromStaticToolCalls(staticCalls);
     const replyText = ensureStreamedAssistantText(merged, fromMessages, reminder, taskUpdate);
+
+    console.log('[FocusFairy] Final response:', JSON.stringify({ replyText, reminder, taskUpdate }, null, 2));
+
     return { text: replyText, reminder, taskUpdate };
 }
 
@@ -499,6 +506,9 @@ export const streamInitialResponse = async (
     // Let the AI fully determine if this is a task, greeting, or off-topic message
     conversationHistory = [{ role: 'user', content: userInput }];
 
+    console.log('[FocusFairy] === streamInitialResponse ===');
+    console.log('[FocusFairy] History sent:', JSON.stringify(conversationHistory, null, 2));
+
     const { provider, apiKey } = getConfig();
     const model = getModel(provider, apiKey);
 
@@ -538,6 +548,9 @@ export const streamContinueChat = async (
     onChunk: StreamCallback
 ): Promise<AIResponse> => {
     conversationHistory.push({ role: 'user', content: message });
+
+    console.log('[FocusFairy] === streamContinueChat ===');
+    console.log('[FocusFairy] History sent:', JSON.stringify(conversationHistory, null, 2));
 
     const { provider, apiKey } = getConfig();
     const model = getModel(provider, apiKey);
