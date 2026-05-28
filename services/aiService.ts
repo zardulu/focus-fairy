@@ -2,11 +2,10 @@ import { generateText, streamText, LanguageModel, tool } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import { z } from 'zod';
+import { AIProvider } from '../types';
 
 // Streaming callback type
 export type StreamCallback = (chunk: string) => void;
-
-export type AIProvider = 'gemini' | 'openai' | 'openrouter' | 'groq';
 
 interface AIConfig {
     provider: AIProvider;
@@ -64,13 +63,23 @@ function ensureStreamedAssistantText(
 ): string {
     const combined = (streamed || parsedFromMessage).trim();
     if (combined.length > 0) return combined;
+
+    // Build a context-aware fallback when the AI called tools but emitted no text
+    if (reminder && taskUpdate && taskUpdate.tasks.length > 0) {
+        const taskName = taskUpdate.currentTaskTitle || taskUpdate.tasks[0].title;
+        const timeDisplay = reminder.minutes >= 1
+            ? `every ${reminder.minutes} min`
+            : `every ${Math.round(reminder.minutes * 60)} sec`;
+        return `Alright, let's lock in on "${taskName}"! I'll check in ${timeDisplay} to keep you on track ✨`;
+    }
     if (reminder) {
-        return "Got it! I'll check in to keep you on track. You've got this! ✨";
+        return "Let's do this! I'll check in to keep you on track. You've got this ✨";
     }
     if (taskUpdate && taskUpdate.tasks.length > 0) {
-        return "Got it! I've added that to your focus list.";
+        const taskName = taskUpdate.currentTaskTitle || taskUpdate.tasks[0].title;
+        return `Alright, let's get going on "${taskName}"! I'll check in every 25 min to keep you on track ✨`;
     }
-    return "I'm here to help you focus! What would you like to work on?";
+    return "Hey! What would you like to focus on today? ✨";
 }
 
 /**
@@ -187,6 +196,13 @@ function extractTaskUpdateFromStaticToolCalls(
     return taskUpdate;
 }
 
+/** Default reminder to auto-inject when the AI recorded tasks but forgot to set a reminder. */
+const DEFAULT_AUTO_REMINDER: ReminderConfig = {
+    type: 'recurring',
+    minutes: 25,
+    reason: 'Auto-set: AI recorded tasks but did not set a reminder',
+};
+
 async function streamAssistantReplyToUI(
     result: {
         textStream: AsyncIterable<string>;
@@ -203,40 +219,74 @@ async function streamAssistantReplyToUI(
         merged = fromMessages;
     }
 
+    console.log('[FocusFairy] Raw AI text:', JSON.stringify(merged));
+
     for (let i = 0; i < merged.length; i++) {
         onChunk(merged.slice(0, i + 1));
         await new Promise(resolve => setTimeout(resolve, 15));
     }
 
     const staticCalls = await result.staticToolCalls;
-    const reminder = extractReminderFromStaticToolCalls(staticCalls);
+    console.log('[FocusFairy] Tool calls:', JSON.stringify(staticCalls, null, 2));
+
+    let reminder = extractReminderFromStaticToolCalls(staticCalls);
     const taskUpdate = extractTaskUpdateFromStaticToolCalls(staticCalls);
+
+    // Auto-inject a default reminder when AI recorded tasks but didn't set one and emitted no text.
+    // This prevents the fallback from asking more questions and looping forever.
+    const aiEmittedNoText = !merged.trim() && !fromMessages.trim();
+    if (aiEmittedNoText && taskUpdate && taskUpdate.tasks.length > 0 && !reminder) {
+        console.log('[FocusFairy] Auto-injecting default reminder (AI recorded tasks but forgot setReminder)');
+        reminder = DEFAULT_AUTO_REMINDER;
+    }
+
     const replyText = ensureStreamedAssistantText(merged, fromMessages, reminder, taskUpdate);
+
+    console.log('[FocusFairy] Final response:', JSON.stringify({ replyText, reminder, taskUpdate }, null, 2));
+
     return { text: replyText, reminder, taskUpdate };
 }
 
 const systemInstruction = `You are Focus Fairy, a gentle and playful assistant that helps users stay focused on their tasks.
 
 **RULES**:
-- Keep responses under 30 words. Be warm, brief, and have personality.
-- No numbered lists, bullet points, or special formatting.
+- Keep normal responses under 30 words. When asking follow-up questions or offering a task breakdown, you may use up to 50 words.
+- Be warm, brief, conversational, and have personality. No numbered lists, bullet points, or special formatting.
 - Your ONLY job is to help the user focus on a task they want to work on.
 
 **HANDLING MESSAGES**:
-- TASK: If the user shares one or more clear, actionable tasks they want to work on (like "I need to finish my essay" or "working on code"), acknowledge it warmly, use the recordTasks tool with ALL tasks you detect, and use the setReminder tool.
-- GREETING: If they just say hi, hello, hey, or any greeting (even if they address you by name like "hi focus fairy"), warmly ask what they'd like to focus on today. Do NOT set a reminder.
-- OFF-TOPIC: If they ask a question or talk about something unrelated to focusing, briefly acknowledge it with a light comment, then ask what task they'd like to focus on. Do NOT set a reminder.
+- GREETING: If they just say hi, hello, hey, or any greeting (even if they address you by name like "hi focus fairy"), warmly ask what they'd like to focus on today. Do NOT set a reminder or record tasks.
+- OFF-TOPIC: If they ask a question or talk about something unrelated to focusing, briefly acknowledge it with a light comment, then ask what task they'd like to focus on. Do NOT set a reminder or record tasks.
+- TASK (see TASK INTAKE FLOW below)
+
+**TASK INTAKE FLOW** (IMPORTANT — follow this carefully):
+When the user mentions a task they want to work on, do NOT immediately call setReminder or recordTasks. Instead, follow this flow:
+
+1. **FAST PATH** — If the user's message already includes enough detail (task + duration, e.g., "study calculus for 1 hour" or "work on my essay for 30 minutes"), skip follow-ups entirely: acknowledge warmly, call recordTasks and setReminder immediately.
+
+2. **SMART FOLLOW-UP** — If the task is vague or missing key context (e.g., "I want to do my math assignment"), ask 1-2 of the most relevant follow-up questions from this list. Pick only the ones that matter most for the specific task — do NOT ask all of them:
+   - **Deadline**: "Does this have a due date?" (ask if the task sounds like schoolwork, a project, or anything with a potential deadline)
+   - **Duration**: "How long do you wanna work on this?" (ask if no duration was mentioned)
+   - **Complexity/Breakdown**: "This sounds like a big one — want me to break it into smaller steps?" (ask if the task is broad or complex, like "prepare for finals" or "write my thesis")
+   - **Starting point**: "Not sure where to begin? I can suggest a first step!" (ask if the task sounds overwhelming or the user seems stuck)
+   - **Priority**: "Is this the most urgent thing on your plate?" (ask if the user mentions multiple things or seems unsure what to tackle)
+
+3. **COMMIT AFTER ANSWERS** — Once the user replies to your follow-up(s), use their answers to call recordTasks and setReminder. Do not ask for additional confirmation. If the user gave a deadline, include it in the setReminder reason field (e.g., "Due tomorrow — checking in to keep you on pace").
+
+4. **NEVER RE-ASK** — If the user's reply is still vague, dismissive, or doesn't answer your question (e.g., "idk", "just start", "whatever", or they repeat the same task), do NOT ask the same question again. Instead, make sensible assumptions and commit immediately. Good defaults: no deadline, 25-minute recurring check-ins, and use the task as stated. You're a helping assistant — take the lead and get them started rather than interrogating them.
+
+5. **TASK BREAKDOWN** — If you asked about complexity and the user wants a breakdown (or the task is clearly complex and they didn't object), break it into 2-4 concrete sub-tasks and record ALL of them via recordTasks. Set the first sub-task as isCurrent=true. Example: "Math assignment" → "Review chapter notes", "Solve practice problems", "Check answers".
 
 **TASK LIST RULES** (recordTasks tool):
-- Use recordTasks whenever the user states clear, actionable work they intend to do.
-- Include every distinct task from the user's latest message, not just the first one.
-- Set isCurrent=true for the task the user appears to be focusing on now. If unclear, use the first or most specific task.
+- Only call recordTasks when you are ready to commit (after fast path or after follow-up answers). Do NOT call it on the first message if you still need to ask follow-ups.
+- Include every distinct task (or sub-task if breaking down) the user should work on.
+- Set isCurrent=true for the task the user should focus on first.
 - Do NOT record greetings, questions, vague intentions, or off-topic chat as tasks.
 
 **REMINDER RULES** (setReminder tool):
-- ONLY use setReminder when the user explicitly states a task they want to work on.
+- Only call setReminder when you are ready to commit (after fast path or after follow-up answers). Do NOT call it on the first message if you still need to ask follow-ups.
 - NEVER set reminders for: greetings, questions, off-topic chat, or vague messages.
-- If unsure whether something is a task, ask for clarification instead of setting a reminder.
+- If the user mentioned a deadline, include the deadline context in the reason field so check-in messages can reference urgency (e.g., "Due in 3 hours — staying on track").
 
 **FOCUS SESSION TIMING** (IMPORTANT):
 - When a user mentions a duration (e.g., "for the next hour", "for 2 hours", "for 30 minutes"), set up RECURRING check-ins to keep them accountable throughout.
@@ -345,9 +395,38 @@ Use this for task list memory only. Do not call it for greetings, vague messages
 let conversationHistory: ChatMessage[] = [];
 let currentTask: string | null = null;
 
+// Session state: tracks what's already been recorded so the AI doesn't re-call tools
+let recordedTaskTitles: string[] = [];
+let sessionTimerActive = false;
+
+/** Build the full system prompt, injecting session context if tasks are already recorded. */
+function buildSystemPrompt(): string {
+    if (recordedTaskTitles.length === 0) {
+        return systemInstruction;
+    }
+
+    const taskList = recordedTaskTitles.map(t => `"${t}"`).join(', ');
+    const timerNote = sessionTimerActive
+        ? 'A recurring check-in timer is already running.'
+        : 'No timer is set yet.';
+
+    return `${systemInstruction}
+
+**ACTIVE SESSION CONTEXT** (auto-injected — do NOT repeat this to the user):
+- Tasks already recorded: ${taskList}. Current focus: "${currentTask || recordedTaskTitles[0]}".
+- ${timerNote}
+- Do NOT call recordTasks again for these existing tasks. Only call recordTasks if the user mentions a COMPLETELY NEW task.
+- Do NOT call setReminder again unless the user explicitly asks to change the timer.
+- You MUST respond with visible text. Do NOT respond with only a tool call and no text.
+- If the user asks for help, give them encouragement or a concrete starting tip for their current task.
+- If the user says they don't want to do it, gently acknowledge and ask if they want to switch tasks or take a break.`;
+}
+
 export const resetConversation = () => {
     conversationHistory = [];
     currentTask = null;
+    recordedTaskTitles = [];
+    sessionTimerActive = false;
 };
 
 export const getCurrentTask = (): string | null => currentTask;
@@ -471,6 +550,12 @@ export const streamInitialResponse = async (
 ): Promise<AIResponse> => {
     // Let the AI fully determine if this is a task, greeting, or off-topic message
     conversationHistory = [{ role: 'user', content: userInput }];
+    // Reset session state for a fresh conversation
+    recordedTaskTitles = [];
+    sessionTimerActive = false;
+
+    console.log('[FocusFairy] === streamInitialResponse ===');
+    console.log('[FocusFairy] History sent:', JSON.stringify(conversationHistory, null, 2));
 
     const { provider, apiKey } = getConfig();
     const model = getModel(provider, apiKey);
@@ -478,7 +563,7 @@ export const streamInitialResponse = async (
     const result = streamText({
         model,
         maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS,
-        system: systemInstruction,
+        system: buildSystemPrompt(),
         messages: conversationHistory.map(m => ({
             role: m.role as 'user' | 'assistant',
             content: m.content,
@@ -493,6 +578,14 @@ export const streamInitialResponse = async (
 
     // Store in conversation history
     conversationHistory.push({ role: 'assistant', content: replyText });
+
+    // Update session state from tool calls
+    if (taskUpdate?.tasks) {
+        recordedTaskTitles = taskUpdate.tasks.map(t => t.title);
+    }
+    if (reminder) {
+        sessionTimerActive = true;
+    }
 
     // Store the AI-selected current task for generated check-ins.
     if (taskUpdate?.currentTaskTitle) {
@@ -512,13 +605,20 @@ export const streamContinueChat = async (
 ): Promise<AIResponse> => {
     conversationHistory.push({ role: 'user', content: message });
 
+    console.log('[FocusFairy] === streamContinueChat ===');
+    console.log('[FocusFairy] Session state:', JSON.stringify({ recordedTaskTitles, sessionTimerActive, currentTask }));
+    console.log('[FocusFairy] History sent:', JSON.stringify(conversationHistory, null, 2));
+
     const { provider, apiKey } = getConfig();
     const model = getModel(provider, apiKey);
+
+    const dynamicPrompt = buildSystemPrompt();
+    console.log('[FocusFairy] Session context injected:', recordedTaskTitles.length > 0 ? 'YES' : 'NO');
 
     const result = streamText({
         model,
         maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS,
-        system: systemInstruction,
+        system: dynamicPrompt,
         messages: conversationHistory.map(m => ({
             role: m.role as 'user' | 'assistant',
             content: m.content,
@@ -533,6 +633,18 @@ export const streamContinueChat = async (
 
     // Store in conversation history
     conversationHistory.push({ role: 'assistant', content: replyText });
+
+    // Update session state from tool calls
+    if (taskUpdate?.tasks) {
+        for (const t of taskUpdate.tasks) {
+            if (!recordedTaskTitles.includes(t.title)) {
+                recordedTaskTitles.push(t.title);
+            }
+        }
+    }
+    if (reminder) {
+        sessionTimerActive = true;
+    }
 
     // Update currentTask if AI detected a new current task.
     if (taskUpdate?.currentTaskTitle) {
