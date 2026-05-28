@@ -77,7 +77,7 @@ function ensureStreamedAssistantText(
     }
     if (taskUpdate && taskUpdate.tasks.length > 0) {
         const taskName = taskUpdate.currentTaskTitle || taskUpdate.tasks[0].title;
-        return `Nice, "${taskName}" is on the list! How long do you wanna work on it? ✨`;
+        return `Alright, let's get going on "${taskName}"! I'll check in every 25 min to keep you on track ✨`;
     }
     return "Hey! What would you like to focus on today? ✨";
 }
@@ -196,6 +196,13 @@ function extractTaskUpdateFromStaticToolCalls(
     return taskUpdate;
 }
 
+/** Default reminder to auto-inject when the AI recorded tasks but forgot to set a reminder. */
+const DEFAULT_AUTO_REMINDER: ReminderConfig = {
+    type: 'recurring',
+    minutes: 25,
+    reason: 'Auto-set: AI recorded tasks but did not set a reminder',
+};
+
 async function streamAssistantReplyToUI(
     result: {
         textStream: AsyncIterable<string>;
@@ -222,8 +229,17 @@ async function streamAssistantReplyToUI(
     const staticCalls = await result.staticToolCalls;
     console.log('[FocusFairy] Tool calls:', JSON.stringify(staticCalls, null, 2));
 
-    const reminder = extractReminderFromStaticToolCalls(staticCalls);
+    let reminder = extractReminderFromStaticToolCalls(staticCalls);
     const taskUpdate = extractTaskUpdateFromStaticToolCalls(staticCalls);
+
+    // Auto-inject a default reminder when AI recorded tasks but didn't set one and emitted no text.
+    // This prevents the fallback from asking more questions and looping forever.
+    const aiEmittedNoText = !merged.trim() && !fromMessages.trim();
+    if (aiEmittedNoText && taskUpdate && taskUpdate.tasks.length > 0 && !reminder) {
+        console.log('[FocusFairy] Auto-injecting default reminder (AI recorded tasks but forgot setReminder)');
+        reminder = DEFAULT_AUTO_REMINDER;
+    }
+
     const replyText = ensureStreamedAssistantText(merged, fromMessages, reminder, taskUpdate);
 
     console.log('[FocusFairy] Final response:', JSON.stringify({ replyText, reminder, taskUpdate }, null, 2));
