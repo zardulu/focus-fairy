@@ -6,10 +6,11 @@ import { useAuth } from '../contexts/AuthContext';
 interface InitialTaskInputProps {
     onTaskSubmit: (task: string) => void;
     isLoading: boolean;
+    isInitializing?: boolean;
     onApiKeyClick?: () => void;
 }
 
-const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoading, onApiKeyClick }) => {
+const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoading, isInitializing, onApiKeyClick }) => {
     const { user } = useAuth();
     const [task, setTask] = useState('');
     const [introText, setIntroText] = useState('');
@@ -117,14 +118,24 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                             <div className="fairy-container animate-float flex-shrink-0">
                                 <img src="/fairy.svg" alt="Focus Fairy" />
                             </div>
-                            <div className="speech-bubble-ai animate-fadeIn flex-1 min-w-0">
-                                <StreamingText
-                                    text={introText}
-                                    particlesActive={introText.length > 0 && introText.length < INTRO_MESSAGE.length}
-                                    className="text-sm leading-relaxed"
-                                    style={{ color: 'var(--text-dark)' }}
-                                />
-                            </div>
+                            {isInitializing ? (
+                                <div className="sparkle-loading-wrapper animate-fadeIn flex-1 min-w-0">
+                                    <div className="sparkle-loading" aria-label="Loading..." role="status">
+                                        <span className="sparkle sparkle-large">✦</span>
+                                        <span className="sparkle sparkle-small">✦</span>
+                                        <span className="sparkle sparkle-medium">✦</span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="speech-bubble-ai animate-fadeIn flex-1 min-w-0">
+                                    <StreamingText
+                                        text={introText}
+                                        particlesActive={introText.length > 0 && introText.length < INTRO_MESSAGE.length}
+                                        className="text-sm leading-relaxed"
+                                        style={{ color: 'var(--text-dark)' }}
+                                    />
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -146,12 +157,12 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                             }}
                             placeholder=""
                             className="input-field flex-1"
-                            disabled={isLoading}
+                            disabled={isLoading || isInitializing}
                         />
                         <button
                             type="submit"
                             className="btn-send"
-                            disabled={isLoading || !task.trim()}
+                            disabled={isLoading || isInitializing || !task.trim()}
                         >
                             {isLoading ? (
                                 <div

@@ -22,7 +22,7 @@
 
 body {
   font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  background-color: var(--bg-cream);
+  background-color: var(--bg-warm);
   color: var(--text-dark);
   min-height: 100vh;
 }

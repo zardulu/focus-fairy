@@ -51,7 +51,7 @@ const resolveCurrentTaskTitle = (taskUpdate: TaskUpdate | null, fallbackTask: st
 };
 
 const App: React.FC = () => {
-    const { user } = useAuth();
+    const { user, loading: authLoading } = useAuth();
     const userRef = useRef(user);
 
     const [task, setTask] = useState<string | null>(null);
@@ -60,6 +60,7 @@ const App: React.FC = () => {
         tasks: [],
         currentTaskId: null,
     });
+    const [isInitializing, setIsInitializing] = useState<boolean>(true);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [streamingText, setStreamingText] = useState<string>('');
     const [streamingComplete, setStreamingComplete] = useState<boolean>(false);
@@ -238,6 +239,8 @@ const App: React.FC = () => {
 
     // Sync remote data when user signs in/out
     useEffect(() => {
+        if (authLoading) return; // Wait for auth state to resolve
+
         if (!user) {
             // User signed out: reset state to default
             setTask(null);
@@ -246,6 +249,7 @@ const App: React.FC = () => {
                 tasks: [],
                 currentTaskId: null,
             });
+            setIsInitializing(false);
             return;
         }
 
@@ -295,12 +299,14 @@ const App: React.FC = () => {
                 }
             } catch (error) {
                 console.error('Error syncing auth state data:', error);
+            } finally {
+                setIsInitializing(false);
             }
         };
 
         void handleAuthSync();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user]);
+    }, [user, authLoading]);
 
     const handleSaveSettings = () => {
         localStorage.setItem('ai_provider', selectedProvider);
@@ -640,6 +646,7 @@ const App: React.FC = () => {
                 <InitialTaskInput
                     onTaskSubmit={handleTaskSubmit}
                     isLoading={isLoading}
+                    isInitializing={isInitializing}
                     onApiKeyClick={() => setShowApiKeyModal(true)}
                 />
             )}
