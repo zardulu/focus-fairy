@@ -27,6 +27,7 @@ export interface ReminderConfig {
 export interface DetectedTask {
     title: string;
     isCurrent: boolean;
+    scheduledDate?: string; // YYYY-MM-DD, only for future-day tasks
 }
 
 export interface TaskUpdate {
@@ -167,7 +168,7 @@ function extractTaskUpdateFromStaticToolCalls(
         if (tc.toolName !== 'recordTasks' || tc.input == null || typeof tc.input !== 'object') continue;
 
         const input = tc.input as {
-            tasks?: Array<{ title?: unknown; isCurrent?: unknown }>;
+            tasks?: Array<{ title?: unknown; isCurrent?: unknown; scheduledDate?: unknown }>;
             currentTaskTitle?: unknown;
         };
 
@@ -177,15 +178,23 @@ function extractTaskUpdateFromStaticToolCalls(
             .map(task => ({
                 title: typeof task.title === 'string' ? task.title.trim() : '',
                 isCurrent: task.isCurrent === true,
+                scheduledDate: typeof task.scheduledDate === 'string' && task.scheduledDate.trim().length > 0
+                    ? task.scheduledDate.trim()
+                    : undefined,
             }))
             .filter(task => task.title.length > 0);
 
         if (tasks.length === 0) continue;
 
+        // For currentTaskTitle, prefer today's tasks (no scheduledDate) over future-dated ones
+        const todayTasks = tasks.filter(t => !t.scheduledDate);
         const currentTaskTitle =
             typeof input.currentTaskTitle === 'string' && input.currentTaskTitle.trim().length > 0
                 ? input.currentTaskTitle.trim()
-                : tasks.find(task => task.isCurrent)?.title ?? tasks[tasks.length - 1].title;
+                : todayTasks.find(task => task.isCurrent)?.title
+                    ?? todayTasks[todayTasks.length - 1]?.title
+                    ?? tasks.find(task => task.isCurrent)?.title
+                    ?? tasks[tasks.length - 1].title;
 
         taskUpdate = {
             tasks,
@@ -300,7 +309,15 @@ When the user mentions a task they want to work on, do NOT immediately call setR
   - Quick tasks: one-time at 10-15 minutes
   - General work: recurring every 20-25 minutes
 - Only use 'one-time' when user explicitly asks for a SINGLE reminder at a specific time (e.g., "remind me in exactly 1 hour").
-- Your response should mention you'll check in periodically, NOT just remind them at the end.`;
+- Your response should mention you'll check in periodically, NOT just remind them at the end.
+
+**FUTURE TASK SCHEDULING** (scheduledDate field in recordTasks):
+- If the user mentions tasks for a specific future day ("tomorrow", "on Thursday", "next Monday", "June 25th"), set the scheduledDate field to that date in YYYY-MM-DD format.
+- Tasks for the current session (today) should NOT have a scheduledDate — omit the field entirely.
+- A single recordTasks call can mix today tasks (no scheduledDate) and future tasks (with scheduledDate).
+- For future-dated tasks, set isCurrent=false since they can't be the active focus right now.
+- When you schedule future tasks, acknowledge it in your response (e.g., "I've scheduled those for Thursday! For now, what would you like to focus on?").
+- If the user ONLY mentions future tasks with no current task, do NOT set a reminder — just record the future tasks and ask what they'd like to work on now.`;
 
 const getConfig = (): AIConfig => {
     const provider = (localStorage.getItem('ai_provider') as AIProvider) || 'gemini';
@@ -372,9 +389,12 @@ const reminderToolSchema = z.object({
 const taskToolSchema = z.object({
     tasks: z.array(z.object({
         title: z.string().min(1).max(140).describe('A concise user-facing task title.'),
-        isCurrent: z.boolean().describe('True for the task the user should focus on now.'),
+        isCurrent: z.boolean().describe('True for the task the user should focus on now. Set false for future-dated tasks.'),
+        scheduledDate: z.string().optional().describe(
+            'YYYY-MM-DD date if the user wants this task on a future day (e.g., tomorrow, next Monday). Omit entirely for tasks meant for the current session.'
+        ),
     })).min(1).max(8).describe('Every clear, actionable task detected in the latest user message.'),
-    currentTaskTitle: z.string().min(1).max(140).describe('The exact title of the task that should be current.'),
+    currentTaskTitle: z.string().min(1).max(140).describe('The exact title of the task that should be current. Must be a today task, not a future-dated one.'),
 });
 
 const setReminderTool = tool({

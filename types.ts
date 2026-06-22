@@ -24,3 +24,11 @@ export interface AISettings {
   apiKeys: Record<AIProvider, string>;
 }
 
+export interface ScheduledTask {
+  id: string;
+  title: string;
+  scheduledDate: string; // YYYY-MM-DD
+  createdAt: number;
+  consumed: boolean;
+}
+

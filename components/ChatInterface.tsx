@@ -13,9 +13,10 @@ interface ChatInterfaceProps {
     streamingText?: string;
     streamingComplete?: boolean;
     onApiKeyClick?: () => void;
+    displayDate?: string;
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messages, onSendMessage, isLoading, streamingText = '', streamingComplete = false, onApiKeyClick }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messages, onSendMessage, isLoading, streamingText = '', streamingComplete = false, onApiKeyClick, displayDate }) => {
     const { user } = useAuth();
     const [inputMessage, setInputMessage] = useState('');
     const [viewOffset, setViewOffset] = useState(0); // 0 = latest, negative = older
@@ -179,6 +180,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messag
                 >
                     Focus Fairy ✨
                 </h1>
+                {displayDate && (
+                    <p
+                        className="text-xs mt-1 mb-0"
+                        style={{
+                            color: 'var(--text-muted)',
+                            opacity: 0.7,
+                            letterSpacing: '0.02em',
+                        }}
+                    >
+                        {displayDate}
+                    </p>
+                )}
 
                 {/* Chat View Container */}
                 <div className="chat-view-wrapper w-full mb-0">

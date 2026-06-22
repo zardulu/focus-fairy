@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import InitialTaskInput from './components/InitialTaskInput';
 import ChatInterface from './components/ChatInterface';
-import { ChatMessage, SessionTask, AIProvider } from './types';
+import { ChatMessage, SessionTask, AIProvider, ScheduledTask } from './types';
 import { initializeChat, generateCheckinMessage, getCurrentTask, ReminderConfig, TaskUpdate, streamInitialResponse, streamContinueChat } from './services/aiService';
 import { useAuth } from './contexts/AuthContext';
 import * as dbService from './services/dbService';
+import { useDailySession, getTodayDateString } from './hooks/useDailySession';
 
 const DEFAULT_CHECKIN_MINUTES = 15;
 
@@ -54,6 +55,25 @@ const App: React.FC = () => {
     const { user, loading: authLoading } = useAuth();
     const userRef = useRef(user);
 
+    // Daily session management — resets chat at midnight for signed-in users
+    const handleSessionChange = useCallback((newSessionId: string) => {
+        // Reset all chat state for the new day
+        setTask(null);
+        setMessages([]);
+        setSessionTaskState({ tasks: [], currentTaskId: null });
+        setStreamingText('');
+        setStreamingComplete(false);
+        setIsLoading(false);
+        // Stop any active timers
+        if (workerRef.current) {
+            workerRef.current.postMessage({ action: 'stop' });
+        }
+        setActiveTimer(null);
+    }, []);
+    const { sessionId, isNewSession, displayDate, sessionLoading } = useDailySession(user, handleSessionChange);
+    const sessionIdRef = useRef(sessionId);
+    useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
+
     const [task, setTask] = useState<string | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [sessionTaskState, setSessionTaskState] = useState<SessionTaskState>({
@@ -99,11 +119,32 @@ const App: React.FC = () => {
             };
         }
 
+        const detectedTasks = taskUpdate?.tasks ?? [];
+        const todayDate = getTodayDateString();
+
+        // Separate future-dated tasks from current-session tasks
+        const futureTasks = detectedTasks.filter(t => t.scheduledDate && t.scheduledDate > todayDate);
+        const todayTasks = detectedTasks.filter(t => !t.scheduledDate || t.scheduledDate <= todayDate);
+
+        // Save future tasks to scheduledTasks collection
+        if (futureTasks.length > 0 && user) {
+            for (const ft of futureTasks) {
+                const scheduledTask: ScheduledTask = {
+                    id: createSessionTaskId(),
+                    title: ft.title.trim(),
+                    scheduledDate: ft.scheduledDate!,
+                    createdAt: Date.now(),
+                    consumed: false,
+                };
+                void dbService.saveScheduledTask(user.uid, scheduledTask);
+            }
+        }
+
+        // Process today's tasks into the session
         const tasks = [...sessionTaskState.tasks];
         const tasksByTitle = new Map(tasks.map(sessionTask => [normalizeTaskTitle(sessionTask.title), sessionTask]));
-        const detectedTasks = taskUpdate?.tasks ?? [];
 
-        for (const detectedTask of detectedTasks) {
+        for (const detectedTask of todayTasks) {
             const title = detectedTask.title.trim();
             if (!title) continue;
 
@@ -143,19 +184,23 @@ const App: React.FC = () => {
 
         // Sync to Firebase if user is logged in
         if (user) {
-            tasks.forEach(t => void dbService.saveTask(user.uid, t));
-            void dbService.saveChatState(user.uid, {
+            tasks.forEach(t => void dbService.saveTask(user.uid, sessionId, t));
+            void dbService.saveChatState(user.uid, sessionId, {
                 task: currentTitle || fallbackTask || task,
                 currentTaskId
             });
         }
 
+        // shouldShowTaskList should reflect today tasks being added (not just future ones)
+        const hasTodayTasksAdded = todayTasks.some(detectedTask => detectedTask.title.trim().length > 0);
+        const hasFutureTasksAdded = futureTasks.length > 0;
+
         return {
             currentTitle,
             tasks,
-            shouldShowTaskList: detectedTasks.some(detectedTask => detectedTask.title.trim().length > 0),
+            shouldShowTaskList: hasTodayTasksAdded || hasFutureTasksAdded,
         };
-    }, [sessionTaskState, user, task]);
+    }, [sessionTaskState, user, task, sessionId]);
 
     const appendLocalAiMessageWithStreaming = useCallback(async (text: string) => {
         setStreamingText('');
@@ -171,7 +216,7 @@ const App: React.FC = () => {
         const msg: ChatMessage = { id: msgId, sender: 'ai', text };
         setMessages(prev => [...prev, msg]);
         if (user) {
-            void dbService.saveMessage(user.uid, msg);
+            void dbService.saveMessage(user.uid, sessionIdRef.current, msg);
         }
         setStreamingText('');
         setStreamingComplete(false);
@@ -239,7 +284,7 @@ const App: React.FC = () => {
 
     // Sync remote data when user signs in/out
     useEffect(() => {
-        if (authLoading) return; // Wait for auth state to resolve
+        if (authLoading || sessionLoading) return; // Wait for auth and session to resolve
 
         if (!user) {
             // User signed out: reset state to default
@@ -271,16 +316,16 @@ const App: React.FC = () => {
                     });
                 }
 
-                // 2. Load remote messages, tasks, and state
-                const remoteMessages = await dbService.loadMessages(user.uid);
-                const remoteTasks = await dbService.loadTasks(user.uid);
-                const remoteState = await dbService.loadChatState(user.uid);
+                // 2. Load remote messages, tasks, and state for the current session
+                const remoteMessages = await dbService.loadMessages(user.uid, sessionId);
+                const remoteTasks = await dbService.loadTasks(user.uid, sessionId);
+                const remoteState = await dbService.loadChatState(user.uid, sessionId);
 
                 // Migration: If user had active anonymous messages and signs in mid-session,
                 // save their current progress to Firestore.
                 if (messages.length > 0 && remoteMessages.length === 0) {
                     const localChatState = { task, currentTaskId: sessionTaskState.currentTaskId };
-                    await dbService.syncLocalDataToFirebase(user.uid, messages, sessionTaskState.tasks, localChatState);
+                    await dbService.syncLocalDataToFirebase(user.uid, sessionId, messages, sessionTaskState.tasks, localChatState);
                 } else {
                     // Otherwise restore user's remote thread
                     if (remoteMessages.length > 0) {
@@ -297,6 +342,73 @@ const App: React.FC = () => {
                         currentTaskRef.current = remoteState.task;
                     }
                 }
+
+                // 3. Load any scheduled tasks for today and inject them into the session
+                const todayDate = getTodayDateString();
+                const scheduledForToday = await dbService.loadScheduledTasksForDate(user.uid, todayDate);
+                if (scheduledForToday.length > 0) {
+                    // Convert scheduled tasks to session tasks
+                    const newSessionTasks: SessionTask[] = scheduledForToday.map(st => ({
+                        id: createSessionTaskId(),
+                        title: st.title,
+                        createdAt: Date.now(),
+                    }));
+
+                    // Merge into session state (dedup by title)
+                    setSessionTaskState(prev => {
+                        const existing = new Map(prev.tasks.map(t => [normalizeTaskTitle(t.title), t]));
+                        const merged = [...prev.tasks];
+                        for (const nst of newSessionTasks) {
+                            if (!existing.has(normalizeTaskTitle(nst.title))) {
+                                merged.push(nst);
+                                existing.set(normalizeTaskTitle(nst.title), nst);
+                            }
+                        }
+                        const firstNewId = newSessionTasks[0]?.id;
+                        return {
+                            tasks: merged,
+                            currentTaskId: prev.currentTaskId || firstNewId || null,
+                        };
+                    });
+
+                    // Save the injected tasks to the session in Firestore
+                    for (const nst of newSessionTasks) {
+                        void dbService.saveTask(user.uid, sessionId, nst);
+                    }
+
+                    // Set the main task if not already set, so the chat view activates
+                    if (!remoteState?.task) {
+                        const firstTitle = newSessionTasks[0]?.title || '';
+                        setTask(firstTitle);
+                        currentTaskRef.current = firstTitle;
+                        void dbService.saveChatState(user.uid, sessionId, {
+                            task: firstTitle,
+                            currentTaskId: newSessionTasks[0]?.id || null
+                        });
+                    }
+
+                    // Create a welcome message with the task card
+                    const welcomeMsgId = createChatMessageId();
+                    const taskCount = newSessionTasks.length;
+                    const welcomeMsg: ChatMessage = {
+                        id: welcomeMsgId,
+                        sender: 'ai',
+                        text: taskCount === 1
+                            ? `Good morning! \u2728 You have a task lined up for today: "${newSessionTasks[0].title}". Ready to get started?`
+                            : `Good morning! \u2728 You have ${taskCount} tasks lined up for today. Let's make it a productive one!`,
+                        showTaskList: true,
+                        taskListSnapshot: newSessionTasks,
+                        currentTaskSnapshot: newSessionTasks[0]?.title,
+                    };
+                    setMessages(prev => [...prev, welcomeMsg]);
+                    void dbService.saveMessage(user.uid, sessionId, welcomeMsg);
+
+                    // Mark scheduled tasks as consumed
+                    await dbService.markScheduledTasksConsumed(
+                        user.uid,
+                        scheduledForToday.map(st => st.id)
+                    );
+                }
             } catch (error) {
                 console.error('Error syncing auth state data:', error);
             } finally {
@@ -306,7 +418,7 @@ const App: React.FC = () => {
 
         void handleAuthSync();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user, authLoading]);
+    }, [user, authLoading, sessionId, sessionLoading]);
 
     const handleSaveSettings = () => {
         localStorage.setItem('ai_provider', selectedProvider);
@@ -354,7 +466,7 @@ const App: React.FC = () => {
             setMessages(prev => [...prev, msg]);
             const currentUser = userRef.current;
             if (currentUser) {
-                void dbService.saveMessage(currentUser.uid, msg);
+                void dbService.saveMessage(currentUser.uid, sessionIdRef.current, msg);
             }
         } catch {
             /* check-in message failed; chat already handles missing keys elsewhere */
@@ -386,14 +498,14 @@ const App: React.FC = () => {
         };
         setMessages(prev => [...prev, msg]);
         if (user) {
-            void dbService.saveMessage(user.uid, msg);
+            void dbService.saveMessage(user.uid, sessionId, msg);
         }
 
         // Start worker timer
         if (workerRef.current) {
             workerRef.current.postMessage({ action: 'start', milliseconds, type: 'one-time' });
         }
-    }, [user]);
+    }, [user, sessionId]);
 
     // Recurring check-in - using Web Worker for reliable background execution
     const startRecurringCheckin = useCallback((minutes: number, fallbackTask: string) => {
@@ -456,7 +568,7 @@ const App: React.FC = () => {
             };
             setMessages(prev => [...prev, msg]);
             if (user) {
-                void dbService.saveMessage(user.uid, msg);
+                void dbService.saveMessage(user.uid, sessionId, msg);
             }
             return;
         }
@@ -478,11 +590,11 @@ const App: React.FC = () => {
             };
             setMessages(prev => [...prev, msg]);
             if (user) {
-                void dbService.saveMessage(user.uid, msg);
+                void dbService.saveMessage(user.uid, sessionId, msg);
             }
             startRecurringCheckin(reminder.minutes, fallbackTask);
         }
-    }, [setOneTimeReminder, startRecurringCheckin, user]);
+    }, [setOneTimeReminder, startRecurringCheckin, user, sessionId]);
 
     const handleTaskSubmit = async (newTask: string) => {
         if (!newTask.trim()) return;
@@ -493,8 +605,8 @@ const App: React.FC = () => {
         const userMessage: ChatMessage = { id: userMsgId, sender: 'user', text: newTask };
         setMessages([userMessage]);
         if (user) {
-            void dbService.saveMessage(user.uid, userMessage);
-            void dbService.saveChatState(user.uid, { task: newTask, currentTaskId: null });
+            void dbService.saveMessage(user.uid, sessionId, userMessage);
+            void dbService.saveChatState(user.uid, sessionId, { task: newTask, currentTaskId: null });
         }
         setIsLoading(true);
         setStreamingText('');
@@ -531,7 +643,7 @@ const App: React.FC = () => {
             };
             setMessages(prev => [...prev, aiMessage]);
             if (user) {
-                void dbService.saveMessage(user.uid, aiMessage);
+                void dbService.saveMessage(user.uid, sessionId, aiMessage);
             }
             setStreamingText('');
             setStreamingComplete(false);
@@ -568,7 +680,7 @@ const App: React.FC = () => {
         const userMsg: ChatMessage = { id: userMsgId, sender: 'user', text: userMessage };
         setMessages(prev => [...prev, userMsg]);
         if (user) {
-            void dbService.saveMessage(user.uid, userMsg);
+            void dbService.saveMessage(user.uid, sessionId, userMsg);
         }
         setIsLoading(true);
         setStreamingText('');
@@ -603,7 +715,7 @@ const App: React.FC = () => {
             };
             setMessages(prev => [...prev, aiMsg]);
             if (user) {
-                void dbService.saveMessage(user.uid, aiMsg);
+                void dbService.saveMessage(user.uid, sessionId, aiMsg);
             }
             setStreamingText('');
             setStreamingComplete(false);
@@ -641,6 +753,7 @@ const App: React.FC = () => {
                     streamingText={streamingText}
                     streamingComplete={streamingComplete}
                     onApiKeyClick={() => setShowApiKeyModal(true)}
+                    displayDate={displayDate}
                 />
             ) : (
                 <InitialTaskInput
