@@ -90,7 +90,7 @@ const AuthButton: React.FC = () => {
         <div
           className="auth-dropdown animate-fadeIn"
           style={{
-            backgroundColor: 'var(--bg-warm)',
+            backgroundColor: 'white',
             border: '1px solid var(--border-light)',
           }}
         >
@@ -107,7 +107,7 @@ const AuthButton: React.FC = () => {
               setIsOpen(false);
               void signOut();
             }}
-            className="w-full text-left px-4 py-2 text-xs hover:bg-white transition-colors"
+            className="w-full text-left px-4 py-2 text-xs hover:bg-transparent transition-colors"
             style={{ color: 'var(--text-dark)' }}
           >
             Sign Out

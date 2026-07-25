@@ -54,6 +54,14 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                 {/* Auth Button */}
                 <AuthButton />
 
+                {/* Settings Button */}
+                <button
+                    onClick={onApiKeyClick}
+                    className="btn-dark"
+                >
+                    Settings
+                </button>
+
                 {/* Info Tooltip */}
                 <div className="relative group">
                     <button
@@ -61,7 +69,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                         style={{
                             borderColor: 'var(--border-light)',
                             color: 'var(--text-muted)',
-                            backgroundColor: 'transparent'
+                            backgroundColor: 'white'
                         }}
                     >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -72,9 +80,9 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
 
                     {/* Tooltip Content */}
                     <div
-                        className="absolute right-0 top-10 w-64 sm:w-72 p-3 sm:p-4 rounded-xl shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50"
+                        className="absolute right-0 top-10 w-64 sm:w-72 p-3 sm:p-4 rounded-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50"
                         style={{
-                            backgroundColor: 'var(--bg-warm)',
+                            backgroundColor: 'white',
                             border: '1px solid var(--border-light)'
                         }}
                     >
@@ -90,13 +98,6 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                     </div>
                 </div>
 
-                {/* Settings Button */}
-                <button
-                    onClick={onApiKeyClick}
-                    className="btn-dark"
-                >
-                    Settings
-                </button>
             </div>
 
             {/* Main Content */}
