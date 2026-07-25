@@ -8,9 +8,10 @@ interface InitialTaskInputProps {
     isLoading: boolean;
     isInitializing?: boolean;
     onApiKeyClick?: () => void;
+    displayDate?: string;
 }
 
-const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoading, isInitializing, onApiKeyClick }) => {
+const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoading, isInitializing, onApiKeyClick, displayDate }) => {
     const { user } = useAuth();
     const [task, setTask] = useState('');
     const [introText, setIntroText] = useState('');
@@ -110,6 +111,18 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                 {/* Chat View Container */}
                     Focus Fairy ✨
                 </h1>
+                {displayDate && (
+                    <p
+                        className="text-xs mt-1 mb-0"
+                        style={{
+                            color: 'var(--text-muted)',
+                            opacity: 0.7,
+                            letterSpacing: '0.02em',
+                        }}
+                    >
+                        {displayDate}
+                    </p>
+                )}
 
                 {/* Fairy and Speech Bubble Container */}
                 <div className="chat-view-wrapper initial-chat-view w-full mb-0">

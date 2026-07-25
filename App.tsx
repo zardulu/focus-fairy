@@ -761,6 +761,7 @@ const App: React.FC = () => {
                     isLoading={isLoading}
                     isInitializing={isInitializing}
                     onApiKeyClick={() => setShowApiKeyModal(true)}
+                    displayDate={displayDate}
                 />
             )}
 
