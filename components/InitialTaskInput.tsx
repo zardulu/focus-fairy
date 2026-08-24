@@ -169,7 +169,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                                     setTask(e.target.value);
                                 }
                             }}
-                            placeholder=""
+                            placeholder="What should we focus on today?"
                             className="input-field flex-1"
                             disabled={isLoading || isInitializing}
                         />

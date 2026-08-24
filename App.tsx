@@ -282,6 +282,17 @@ const App: React.FC = () => {
         }
     }, []);
 
+    // Close the settings modal with Escape
+    useEffect(() => {
+        if (!showApiKeyModal) return;
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setShowApiKeyModal(false);
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [showApiKeyModal]);
+
     // Sync remote data when user signs in/out
     useEffect(() => {
         if (authLoading || sessionLoading) return; // Wait for auth and session to resolve
@@ -768,8 +779,8 @@ const App: React.FC = () => {
             {/* API Key Modal */}
             {showApiKeyModal && (
                 <div
-                    className="fixed inset-0 flex items-center justify-center z-50"
-                    style={{ 
+                    className="modal-overlay fixed inset-0 flex items-center justify-center z-50"
+                    style={{
                         backgroundColor: 'rgba(0, 0, 0, 0.25)',
                         backdropFilter: 'blur(8px)',
                         WebkitBackdropFilter: 'blur(8px)'
@@ -777,14 +788,17 @@ const App: React.FC = () => {
                     onClick={() => setShowApiKeyModal(false)}
                 >
                     <div
-                        className="rounded-2xl p-4 sm:p-6 max-w-md w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="api-key-modal-title"
+                        className="modal-panel rounded-2xl p-4 sm:p-6 max-w-md w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto"
                         style={{
                             backgroundColor: 'var(--bg-warm)',
                             border: '1px solid var(--border-light)'
                         }}
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <h2 className="font-title text-2xl font-semibold mb-4" style={{ color: 'var(--text-dark)' }}>
+                        <h2 id="api-key-modal-title" className="font-title text-2xl font-semibold mb-4" style={{ color: 'var(--text-dark)' }}>
                             AI Provider Settings
                         </h2>
 

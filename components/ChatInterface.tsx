@@ -264,8 +264,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messag
                                         <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
                                             Current: <span className="font-medium" style={{ color: 'var(--text-dark)' }}>{currentTaskForMessage}</span>
                                         </span>
-                                        <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
-                                            {taskListForMessage.length} task{taskListForMessage.length === 1 ? '' : 's'} {isTaskListOpen ? '↑' : '↓'}
+                                        <span className="text-xs flex-shrink-0 flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+                                            {taskListForMessage.length} task{taskListForMessage.length === 1 ? '' : 's'}
+                                            <svg
+                                                className={`task-list-chevron${isTaskListOpen ? '' : ' task-list-chevron-closed'}`}
+                                                width="10"
+                                                height="7"
+                                                viewBox="0 0 12 8"
+                                                fill="none"
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                aria-hidden="true"
+                                            >
+                                                <path d="M1 6L6 1L11 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                            </svg>
                                         </span>
                                     </button>
                                     <div
@@ -304,6 +315,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messag
                             <button
                                 onClick={scrollUp}
                                 className="nav-arrow"
+                                aria-label="Show earlier messages"
                                 disabled={!canScrollUp}
                                 style={{ opacity: canScrollUp ? 1 : 0.3, cursor: canScrollUp ? 'pointer' : 'default' }}
                             >
@@ -311,9 +323,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messag
                                     <path d="M1 6L6 1L11 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                                 </svg>
                             </button>
+                            {userMessages.length > 1 && (
+                                <span className="nav-arrows-position" aria-hidden="true">
+                                    {currentPairIndex + 1} / {userMessages.length}
+                                </span>
+                            )}
                             <button
                                 onClick={scrollDown}
                                 className="nav-arrow"
+                                aria-label="Show later messages"
                                 disabled={!canScrollDown}
                                 style={{ opacity: canScrollDown ? 1 : 0.3, cursor: canScrollDown ? 'pointer' : 'default' }}
                             >
@@ -335,7 +353,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messag
                             type="text"
                             value={inputMessage}
                             onChange={handleInputChange}
-                            placeholder=""
+                            placeholder="Reply to your fairy…"
                             className="input-field flex-1"
                             disabled={isLoading}
                         />

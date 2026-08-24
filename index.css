@@ -185,6 +185,37 @@ body {
   animation: fadeIn 0.4s ease-out forwards;
 }
 
+/* Settings modal open animation */
+@keyframes modalOverlayIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modalPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modal-overlay {
+  animation: modalOverlayIn 0.2s ease-out forwards;
+}
+
+.modal-panel {
+  animation: modalPanelIn 0.25s ease-out forwards;
+}
+
 /* Typing indicator */
 @keyframes pulse {
 
@@ -293,6 +324,16 @@ body {
   color: var(--text-dark);
 }
 
+/* Position indicator between nav arrows (e.g. "3 / 7") */
+.nav-arrows-position {
+  font-size: 9px;
+  color: var(--text-muted);
+  line-height: 1;
+  padding: 2px 0;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
 /* Fairy container - same background as page */
 .fairy-container {
   width: 140px;
@@ -395,6 +436,15 @@ body {
   color: var(--text-muted);
   font-size: 13px;
   line-height: 1;
+}
+
+/* Task list collapse chevron */
+.task-list-chevron {
+  transition: transform 0.2s ease;
+}
+
+.task-list-chevron-closed {
+  transform: rotate(180deg);
 }
 
 /* Desktop alignment: reserve space on the right of the AI row equal to the send
