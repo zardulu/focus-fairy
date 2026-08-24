@@ -9,6 +9,7 @@
   --text-muted: #888888;
   --accent-pink: #E8C4C4;
   --accent-pink-light: rgba(232, 196, 196, 0.3);
+  --accent-amber: #D98A2B;
   --border-light: #E5E5E5;
   --btn-dark: #2D2A26;
   --btn-dark-hover: #1A1816;
@@ -152,6 +153,25 @@ body {
   cursor: not-allowed;
 }
 
+/* Character counter under input */
+.char-counter {
+  color: var(--text-muted);
+  transition: opacity 0.3s ease, color 0.2s ease;
+}
+
+.char-counter-warn {
+  color: var(--accent-amber);
+}
+
+/* Press feedback */
+.btn-dark:active {
+  transform: scale(0.96);
+}
+
+.btn-send:not(:disabled):active {
+  transform: scale(0.9);
+}
+
 /* Animations */
 @keyframes float {
 
@@ -183,6 +203,21 @@ body {
 
 .animate-fadeIn {
   animation: fadeIn 0.4s ease-out forwards;
+}
+
+/* Crossfade when switching between landing and chat views */
+@keyframes viewFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-viewFadeIn {
+  animation: viewFadeIn 0.35s ease-out;
 }
 
 /* Settings modal open animation */
@@ -344,6 +379,33 @@ body {
   object-fit: contain;
   margin-left: -20px;
   /* Offset to not push bubble */
+}
+
+/* Fairy reacts while thinking — extra bounce + sparkle glow */
+@keyframes fairyThinking {
+
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+    filter: drop-shadow(0 0 0 rgba(242, 201, 76, 0));
+  }
+
+  25% {
+    transform: translateY(-10px) rotate(-4deg);
+  }
+
+  50% {
+    transform: translateY(0) rotate(0deg);
+    filter: drop-shadow(0 0 14px rgba(242, 201, 76, 0.55));
+  }
+
+  75% {
+    transform: translateY(-10px) rotate(4deg);
+  }
+}
+
+.fairy-thinking img {
+  animation: fairyThinking 1.6s ease-in-out infinite;
 }
 
 /* Response text area */
@@ -701,7 +763,7 @@ body {
 }
 
 .auth-btn:active {
-  transform: translateY(0);
+  transform: translateY(0) scale(0.96);
 }
 
 .auth-btn-signin {

@@ -56,7 +56,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
 
     return (
         <div
-            className="min-h-screen w-full flex flex-col items-center justify-center px-0 py-4 sm:p-4 relative"
+            className="animate-viewFadeIn min-h-screen w-full flex flex-col items-center justify-center px-0 py-4 sm:p-4 relative"
             style={{ backgroundColor: 'var(--bg-warm)' }}
         >
             {/* Info Tooltip and Settings Button */}
@@ -138,7 +138,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                     <div className="chat-pair-container">
                         {/* AI Message - with fairy and bubble */}
                         <div className="ai-message-row">
-                            <div className="fairy-container animate-float flex-shrink-0">
+                            <div className={`fairy-container animate-float flex-shrink-0${isInitializing || isLoading ? ' fairy-thinking' : ''}`}>
                                 <img src="/fairy.svg" alt="Focus Fairy" />
                             </div>
                             {isInitializing ? (
@@ -199,10 +199,10 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                             )}
                         </button>
                     </form>
-                    <p className="text-xs mt-1 text-right" style={{
-                        color: task.length >= MAX_INPUT_CHARS ? 'var(--accent-pink)' : 'var(--text-muted)',
-                        opacity: task ? 1 : 0
-                    }}>
+                    <p
+                        className={`char-counter text-xs mt-1 text-right${task.length >= MAX_INPUT_CHARS * 0.9 ? ' char-counter-warn' : ''}`}
+                        style={{ opacity: task ? 1 : 0 }}
+                    >
                         {task.length}/{MAX_INPUT_CHARS}
                     </p>
                 </div>
