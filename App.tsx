@@ -6,6 +6,7 @@ import { initializeChat, generateCheckinMessage, getCurrentTask, ReminderConfig,
 import { useAuth } from './contexts/AuthContext';
 import * as dbService from './services/dbService';
 import { useDailySession, getTodayDateString } from './hooks/useDailySession';
+import { ToastContainer, useToasts } from './components/Toasts';
 
 const DEFAULT_CHECKIN_MINUTES = 15;
 
@@ -54,6 +55,7 @@ const resolveCurrentTaskTitle = (taskUpdate: TaskUpdate | null, fallbackTask: st
 const App: React.FC = () => {
     const { user, loading: authLoading } = useAuth();
     const userRef = useRef(user);
+    const { toasts, pushToast, dismissToast } = useToasts();
 
     // Daily session management — resets chat at midnight for signed-in users
     const handleSessionChange = useCallback((newSessionId: string) => {
@@ -201,26 +203,6 @@ const App: React.FC = () => {
             shouldShowTaskList: hasTodayTasksAdded || hasFutureTasksAdded,
         };
     }, [sessionTaskState, user, task, sessionId]);
-
-    const appendLocalAiMessageWithStreaming = useCallback(async (text: string) => {
-        setStreamingText('');
-        setStreamingComplete(false);
-
-        for (let i = 0; i < text.length; i++) {
-            setStreamingText(text.slice(0, i + 1));
-            await new Promise(resolve => setTimeout(resolve, 15));
-        }
-
-        setStreamingComplete(true);
-        const msgId = createChatMessageId();
-        const msg: ChatMessage = { id: msgId, sender: 'ai', text };
-        setMessages(prev => [...prev, msg]);
-        if (user) {
-            void dbService.saveMessage(user.uid, sessionIdRef.current, msg);
-        }
-        setStreamingText('');
-        setStreamingComplete(false);
-    }, [user]);
 
     const getTaskListMessageMeta = (taskUpdateResult: TaskUpdateResult): Partial<ChatMessage> => {
         if (!taskUpdateResult.shouldShowTaskList || taskUpdateResult.tasks.length === 0) {
@@ -480,11 +462,11 @@ const App: React.FC = () => {
                 void dbService.saveMessage(currentUser.uid, sessionIdRef.current, msg);
             }
         } catch {
-            /* check-in message failed; chat already handles missing keys elsewhere */
+            pushToast('Check-in failed. Please check your API key in Settings.', 'error');
         } finally {
             isGeneratingRef.current = false;
         }
-    }, []);
+    }, [pushToast]);
 
     // One-time reminder - using Web Worker for reliable background execution
     const setOneTimeReminder = useCallback((minutes: number, fallbackTask: string, taskListMeta: Partial<ChatMessage> = {}) => {
@@ -740,7 +722,8 @@ function formatTaskForCheckin(task: string): string {
     }
 
     const rephrasedFirst = /^[A-Z]{2,}$/.test(firstWord) ? firstWord : firstWord.toLowerCase();
-    return rephrasedRest ? `${rephrasedFirst}
+    return rephrasedRest ? `${rephrasedFirst} ${rephrasedRest}` : rephrasedFirst;
+}
 
     // Handle reminder configuration from AI tool calls
     const handleReminderConfig = useCallback((reminder: ReminderConfig | null, fallbackTask: string, messageMeta: Partial<ChatMessage> = {}) => {
@@ -752,17 +735,7 @@ function formatTaskForCheckin(task: string): string {
         const currentPermission = Notification.permission;
 
         if (currentPermission !== 'granted') {
-            const msgId = createChatMessageId();
-            const msg: ChatMessage = {
-                id: msgId,
-                sender: 'ai',
-                text: `⚠️ Enable notifications in your browser to get check-in reminders!`,
-                ...messageMeta,
-            };
-            setMessages(prev => [...prev, msg]);
-            if (user) {
-                void dbService.saveMessage(user.uid, sessionId, msg);
-            }
+            pushToast('Enable notifications in your browser to get check-in reminders!', 'warning');
             return;
         }
 
@@ -858,7 +831,7 @@ function formatTaskForCheckin(task: string): string {
             }
 
         } catch {
-            await appendLocalAiMessageWithStreaming("To use Focus Fairy, please add your own API key in Settings. Don't worry, you can use free-tier keys!");
+            pushToast("To use Focus Fairy, please add your own API key in Settings. Don't worry, you can use free-tier keys!", 'error');
 
             // Fallback: start default recurring check-in on error
             if (Notification.permission === 'granted') {
@@ -930,7 +903,7 @@ function formatTaskForCheckin(task: string): string {
             }
 
         } catch {
-            await appendLocalAiMessageWithStreaming("I'm having trouble responding right now. Let's try again in a moment.");
+            pushToast("I'm having trouble responding right now. Let's try again in a moment.", 'error');
         } finally {
             setIsLoading(false);
         }
@@ -962,6 +935,9 @@ function formatTaskForCheckin(task: string): string {
                 />
             )}
 
+            {/* Toast Notifications */}
+            <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
             {/* API Key Modal */}
             {showApiKeyModal && (
                 <div
@@ -977,7 +953,7 @@ function formatTaskForCheckin(task: string): string {
                         role="dialog"
                         aria-modal="true"
                         aria-labelledby="api-key-modal-title"
-                        className="modal-panel rounded-2xl p-4 sm:p-6 max-w-md w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto"
+                        className="modal-panel custom-scrollbar rounded-2xl p-4 sm:p-6 max-w-md w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto"
                         style={{
                             backgroundColor: 'var(--bg-warm)',
                             border: '1px solid var(--border-light)'

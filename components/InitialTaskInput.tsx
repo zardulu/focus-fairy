@@ -150,7 +150,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                                     </div>
                                 </div>
                             ) : (
-                                <div className="speech-bubble-ai animate-fadeIn flex-1 min-w-0">
+                                <div className="speech-bubble-ai animate-fadeIn custom-scrollbar flex-1 min-w-0">
                                     <StreamingText
                                         text={introText}
                                         particlesActive={introText.length > 0 && introText.length < INTRO_MESSAGE.length}

@@ -201,7 +201,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messag
                         {userMessage ? (
                             <div className="user-message-row">
                                 <p
-                                    className="user-message-text animate-slideUp"
+                                    className="user-message-text animate-slideUp custom-scrollbar"
                                     key={`user-${currentPairIndex}`}
                                 >
                                     {userMessage.text}
@@ -219,7 +219,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messag
                                     <AISparkleIndicator />
                                 </div>
                             ) : (
-                                <div className="speech-bubble-ai animate-fadeIn flex-1 min-w-0">
+                                <div className="speech-bubble-ai animate-fadeIn custom-scrollbar flex-1 min-w-0">
                                     <StreamingText
                                         text={displayedAiText}
                                         particlesActive={showStreamParticles && showLiveAiText}
