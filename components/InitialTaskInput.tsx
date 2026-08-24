@@ -15,23 +15,32 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
     const { user } = useAuth();
     const [task, setTask] = useState('');
     const [introText, setIntroText] = useState('');
+    const [placeholderText, setPlaceholderText] = useState('');
 
     // Character limit for input
     const MAX_INPUT_CHARS = 280;
     const INTRO_MESSAGE = "Hi! I'm Focus Fairy! I'll help you focus on your daily tasks and check in on your progress. What tasks would you like to focus on today?.";
+    const PLACEHOLDER_TEXT = "What should we focus on today?";
 
     useEffect(() => {
         let isCancelled = false;
 
-        const streamIntroMessage = async () => {
-            for (let i = 0; i < INTRO_MESSAGE.length; i++) {
+        const streamText = async (text: string, onChunk: (partial: string) => void) => {
+            for (let i = 0; i < text.length; i++) {
                 if (isCancelled) return;
-                setIntroText(INTRO_MESSAGE.slice(0, i + 1));
+                onChunk(text.slice(0, i + 1));
                 await new Promise(resolve => setTimeout(resolve, 15));
             }
         };
 
-        void streamIntroMessage();
+        const streamIntroThenPlaceholder = async () => {
+            await streamText(INTRO_MESSAGE, setIntroText);
+            if (isCancelled) return;
+            await new Promise(resolve => setTimeout(resolve, 300));
+            await streamText(PLACEHOLDER_TEXT, setPlaceholderText);
+        };
+
+        void streamIntroThenPlaceholder();
 
         return () => {
             isCancelled = true;
@@ -169,7 +178,7 @@ const InitialTaskInput: React.FC<InitialTaskInputProps> = ({ onTaskSubmit, isLoa
                                     setTask(e.target.value);
                                 }
                             }}
-                            placeholder="What should we focus on today?"
+                            placeholder={placeholderText}
                             className="input-field flex-1"
                             disabled={isLoading || isInitializing}
                         />
