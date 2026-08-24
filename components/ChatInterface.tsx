@@ -323,11 +323,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ task, currentTask, messag
                                     <path d="M1 6L6 1L11 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                                 </svg>
                             </button>
-                            {userMessages.length > 1 && (
-                                <span className="nav-arrows-position" aria-hidden="true">
-                                    {currentPairIndex + 1} / {userMessages.length}
-                                </span>
-                            )}
                             <button
                                 onClick={scrollDown}
                                 className="nav-arrow"
