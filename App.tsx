@@ -560,6 +560,188 @@ const App: React.FC = () => {
         };
     }, [sendCheckin]);
 
+function formatTaskForCheckin(task: string): string {
+    if (!task) return '';
+    let cleaned = task.trim();
+    if (!cleaned) return '';
+
+    // Remove any surrounding quotes or punctuation
+    cleaned = cleaned.replace(/^["'`]+|["'`]+$/g, '').trim();
+
+    // Strip leading conversational phrases
+    cleaned = cleaned.replace(/^(?:i\s+need\s+to|i\s+have\s+to|i\s+want\s+to|need\s+to|want\s+to|to)\s+/i, '');
+
+    const words = cleaned.split(/\s+/);
+    if (words.length === 0 || !words[0]) return '';
+
+    const firstWord = words[0];
+    const restOfWords = words.slice(1).join(' ');
+
+    // Convert pronouns in rest of words
+    const rephrasedRest = restOfWords
+        ? restOfWords
+            .replace(/\bmy\b/gi, 'your')
+            .replace(/\bmyself\b/gi, 'yourself')
+            .replace(/\bour\b/gi, 'your')
+            .replace(/\bourselves\b/gi, 'yourselves')
+            .replace(/\bme\b/gi, 'you')
+        : '';
+
+    const verbToGerund: Record<string, string> = {
+        send: 'sending',
+        write: 'writing',
+        read: 'reading',
+        study: 'studying',
+        clean: 'cleaning',
+        do: 'doing',
+        make: 'making',
+        take: 'taking',
+        finish: 'finishing',
+        complete: 'completing',
+        fix: 'fixing',
+        review: 'reviewing',
+        work: 'working',
+        prepare: 'preparing',
+        code: 'coding',
+        build: 'building',
+        draft: 'drafting',
+        organize: 'organizing',
+        plan: 'planning',
+        practice: 'practicing',
+        check: 'checking',
+        update: 'updating',
+        edit: 'editing',
+        create: 'creating',
+        research: 'researching',
+        solve: 'solving',
+        watch: 'watching',
+        listen: 'listening',
+        run: 'running',
+        learn: 'learning',
+        debug: 'debugging',
+        refactor: 'refactoring',
+        set: 'setting',
+        start: 'starting',
+        tidy: 'tidying',
+        wash: 'washing',
+        cook: 'cooking',
+        exercise: 'exercising',
+        walk: 'walking',
+        buy: 'buying',
+        call: 'calling',
+        email: 'emailing',
+        message: 'messaging',
+        submit: 'submitting',
+        fill: 'filling',
+        grade: 'grading',
+        revise: 'revising',
+        draw: 'drawing',
+        paint: 'painting',
+        design: 'designing',
+        test: 'testing',
+        implement: 'implementing',
+        deploy: 'deploying',
+        format: 'formatting',
+        generate: 'generating',
+        summarize: 'summarizing',
+        memorize: 'memorizing',
+        rehearse: 'rehearsing',
+        pack: 'packing',
+        sort: 'sorting',
+        file: 'filing',
+        clear: 'clearing',
+        record: 'recording',
+        print: 'printing',
+        scan: 'scanning',
+        schedule: 'scheduling',
+        arrange: 'arranging',
+        brainstorm: 'brainstorming',
+        analyze: 'analyzing',
+        inspect: 'inspecting',
+        examine: 'examining',
+        apply: 'applying',
+        order: 'ordering',
+        shop: 'shopping',
+        browse: 'browsing',
+        search: 'searching',
+        type: 'typing',
+        calculate: 'calculating',
+        translate: 'translating',
+        convert: 'converting',
+        optimize: 'optimizing',
+        configure: 'configuring',
+        install: 'installing',
+        setup: 'setting up',
+        sync: 'syncing',
+        push: 'pushing',
+        pull: 'pulling',
+        commit: 'committing',
+        merge: 'merging',
+        post: 'posting',
+        publish: 'publishing',
+        tweet: 'tweeting',
+        upload: 'uploading',
+        download: 'downloading',
+        backup: 'backing up',
+        restore: 'restoring',
+        eat: 'eating',
+        drink: 'drinking',
+        get: 'getting',
+        give: 'giving',
+        find: 'finding',
+        choose: 'choosing',
+        pick: 'picking',
+        answer: 'answering',
+        respond: 'responding',
+        tackle: 'tackling',
+        focus: 'focusing',
+        outline: 'outlining',
+        compose: 'composing',
+        compile: 'compiling',
+        wrap: 'wrapping',
+        cut: 'cutting',
+        put: 'putting',
+        drop: 'dropping',
+        ship: 'shipping',
+        deliver: 'delivering',
+        pitch: 'pitching',
+        sell: 'selling',
+        pay: 'paying',
+        audit: 'auditing',
+        track: 'tracking',
+        train: 'training',
+        teach: 'teaching',
+        log: 'logging',
+        sign: 'signing',
+        proofread: 'proofreading',
+        summarise: 'summarising',
+        analyse: 'analysing',
+        organise: 'organising',
+        practise: 'practising',
+        memorise: 'memorising',
+        optimise: 'optimising',
+    };
+
+    const lowerFirst = firstWord.toLowerCase();
+
+    let gerund = '';
+    if (lowerFirst.endsWith('ing')) {
+        gerund = lowerFirst;
+    } else if (verbToGerund[lowerFirst]) {
+        gerund = verbToGerund[lowerFirst];
+    } else if (lowerFirst.endsWith('e') && !lowerFirst.endsWith('ee') && !lowerFirst.endsWith('oe') && !lowerFirst.endsWith('ye')) {
+        gerund = lowerFirst.slice(0, -1) + 'ing';
+    } else if (lowerFirst.endsWith('ie')) {
+        gerund = lowerFirst.slice(0, -2) + 'ying';
+    }
+
+    if (gerund) {
+        return rephrasedRest ? `${gerund} ${rephrasedRest}` : gerund;
+    }
+
+    const rephrasedFirst = /^[A-Z]{2,}$/.test(firstWord) ? firstWord : firstWord.toLowerCase();
+    return rephrasedRest ? `${rephrasedFirst}
+
     // Handle reminder configuration from AI tool calls
     const handleReminderConfig = useCallback((reminder: ReminderConfig | null, fallbackTask: string, messageMeta: Partial<ChatMessage> = {}) => {
         if (!reminder) {
@@ -593,10 +775,14 @@ const App: React.FC = () => {
         } else {
             // Add a message for recurring check-ins
             const msgId = createChatMessageId();
+            const rephrasedTask = formatTaskForCheckin(fallbackTask);
+            const taskContext = rephrasedTask
+                ? ` with ${rephrasedTask}`
+                : '';
             const msg: ChatMessage = {
                 id: msgId,
                 sender: 'ai',
-                text: `✨ I'll check in with you every ${timeDisplay}. Let's do this!`,
+                text: `✨ I'll keep checking in on your progress${taskContext}! Let's do this!`,
                 ...messageMeta,
             };
             setMessages(prev => [...prev, msg]);
