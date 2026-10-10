@@ -225,6 +225,11 @@ body {
   animation: viewFadeIn 0.35s ease-out;
 }
 
+/* The app shell stays mounted while the opening prompt becomes the first chat turn. */
+.focus-stage {
+  animation: fadeIn 0.25s ease-out;
+}
+
 /* Settings modal open animation */
 @keyframes modalOverlayIn {
   from {

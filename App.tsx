@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import InitialTaskInput from './components/InitialTaskInput';
 import ChatInterface from './components/ChatInterface';
+import FocusShell from './components/FocusShell';
 import { ChatMessage, SessionTask, AIProvider, ScheduledTask } from './types';
 import { initializeChat, generateCheckinMessage, getCurrentTask, ReminderConfig, TaskUpdate, streamInitialResponse, streamContinueChat } from './services/aiService';
 import { useAuth } from './contexts/AuthContext';
@@ -913,27 +914,28 @@ function formatTaskForCheckin(task: string): string {
 
     return (
         <>
-            {task ? (
-                <ChatInterface
-                    task={task}
-                    currentTask={currentTaskTitle}
-                    messages={messages}
-                    onSendMessage={handleSendMessage}
-                    isLoading={isLoading}
-                    streamingText={streamingText}
-                    streamingComplete={streamingComplete}
-                    onApiKeyClick={() => setShowApiKeyModal(true)}
-                    displayDate={displayDate}
-                />
-            ) : (
-                <InitialTaskInput
-                    onTaskSubmit={handleTaskSubmit}
-                    isLoading={isLoading}
-                    isInitializing={isInitializing}
-                    onApiKeyClick={() => setShowApiKeyModal(true)}
-                    displayDate={displayDate}
-                />
-            )}
+            <FocusShell
+                onApiKeyClick={() => setShowApiKeyModal(true)}
+                displayDate={displayDate}
+            >
+                {task ? (
+                    <ChatInterface
+                        task={task}
+                        currentTask={currentTaskTitle}
+                        messages={messages}
+                        onSendMessage={handleSendMessage}
+                        isLoading={isLoading}
+                        streamingText={streamingText}
+                        streamingComplete={streamingComplete}
+                    />
+                ) : (
+                    <InitialTaskInput
+                        onTaskSubmit={handleTaskSubmit}
+                        isLoading={isLoading}
+                        isInitializing={isInitializing}
+                    />
+                )}
+            </FocusShell>
 
             {/* Toast Notifications */}
             <ToastContainer toasts={toasts} onDismiss={dismissToast} />
