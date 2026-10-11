@@ -83,6 +83,100 @@ body {
   }
 }
 
+.timer-confirmation {
+  width: min(100%, 430px);
+  margin-top: 14px;
+  padding: 13px 15px 14px;
+  border: 1px solid var(--accent-pink);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 8px 24px rgba(45, 42, 38, 0.06);
+  text-align: left;
+}
+
+.timer-confirmation-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dark);
+}
+
+.timer-confirmation-heading h2 {
+  font-size: 12px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.timer-confirmation-dot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent-amber);
+}
+
+.timer-confirmation-copy {
+  margin-top: 7px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.timer-confirmation-copy strong {
+  color: var(--text-dark);
+  font-weight: 500;
+}
+
+.timer-confirmation-time {
+  color: var(--text-dark);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.timer-confirmation-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.timer-confirmation-keep,
+.timer-confirmation-replace {
+  min-height: 32px;
+  padding: 7px 12px;
+  border-radius: 9999px;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.timer-confirmation-keep {
+  border: 1px solid var(--border-light);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.timer-confirmation-keep:hover {
+  border-color: var(--text-muted);
+  color: var(--text-dark);
+}
+
+.timer-confirmation-replace {
+  border: 1px solid var(--btn-dark);
+  background: var(--btn-dark);
+  color: white;
+}
+
+.timer-confirmation-replace:hover {
+  background: var(--btn-dark-hover);
+}
+
+.timer-confirmation-keep:active,
+.timer-confirmation-replace:active {
+  transform: scale(0.97);
+}
+
 /* Custom scrollbar */
 .custom-scrollbar {
   scrollbar-width: thin;

@@ -31,8 +31,20 @@ interface TaskUpdateResult {
 
 interface ActiveTimer {
     type: 'one-time' | 'recurring';
+    task: string;
     durationMs: number;
     endAt: number;
+}
+
+interface PendingTimerRequest {
+    reminder: ReminderConfig;
+    fallbackTask: string;
+    messageMeta: Partial<ChatMessage>;
+    currentTimer: {
+        type: ActiveTimer['type'];
+        task: string;
+        remainingSeconds: number;
+    };
 }
 
 const normalizeTaskTitle = (title: string) => title.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -79,6 +91,8 @@ const App: React.FC = () => {
         }
         setActiveTimer(null);
         timerTypeRef.current = null;
+        timerTaskRef.current = '';
+        setPendingTimerRequest(null);
     }, []);
     const { sessionId, isNewSession, displayDate, sessionLoading } = useDailySession(user, handleSessionChange);
     const sessionIdRef = useRef(sessionId);
@@ -104,9 +118,11 @@ const App: React.FC = () => {
         groq: ''
     });
     const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(null);
+    const [pendingTimerRequest, setPendingTimerRequest] = useState<PendingTimerRequest | null>(null);
     const [currentTime, setCurrentTime] = useState<number>(() => Date.now());
     const workerRef = useRef<Worker | null>(null);
     const currentTaskRef = useRef<string>(''); // Store current task for worker callback
+    const timerTaskRef = useRef<string>(''); // Keep active timer check-ins tied to their original task
 
     // Refresh the visible countdown once per second while a timer is running.
     useEffect(() => {
@@ -466,7 +482,7 @@ const App: React.FC = () => {
         isGeneratingRef.current = true;
 
         try {
-            const taskForCheckin = currentTaskRef.current || getCurrentTask() || fallbackTask;
+            const taskForCheckin = fallbackTask || currentTaskRef.current || getCurrentTask() || '';
             const checkinMessage = await generateCheckinMessage(taskForCheckin);
 
             // Show browser notification if permission granted
@@ -496,6 +512,7 @@ const App: React.FC = () => {
     const setOneTimeReminder = useCallback((minutes: number, fallbackTask: string, taskListMeta: Partial<ChatMessage> = {}) => {
         // Store task for callback
         currentTaskRef.current = fallbackTask;
+        timerTaskRef.current = fallbackTask;
         timerTypeRef.current = 'one-time';
 
         const milliseconds = minutes * 60 * 1000;
@@ -503,6 +520,7 @@ const App: React.FC = () => {
 
         setActiveTimer({
             type: 'one-time',
+            task: fallbackTask,
             durationMs: milliseconds,
             endAt: Date.now() + milliseconds,
         });
@@ -532,12 +550,14 @@ const App: React.FC = () => {
     const startRecurringCheckin = useCallback((minutes: number, fallbackTask: string) => {
         // Store task for callback
         currentTaskRef.current = fallbackTask;
+        timerTaskRef.current = fallbackTask;
         timerTypeRef.current = 'recurring';
 
         const milliseconds = minutes * 60 * 1000;
 
         setActiveTimer({
             type: 'recurring',
+            task: fallbackTask,
             durationMs: milliseconds,
             endAt: Date.now() + milliseconds,
         });
@@ -556,9 +576,12 @@ const App: React.FC = () => {
         // Handle timer ticks from worker
         workerRef.current.onmessage = async (e) => {
             if (e.data.type === 'tick') {
+                const timerTask = timerTaskRef.current || currentTaskRef.current;
+
                 if (timerTypeRef.current === 'one-time') {
                     setActiveTimer(null);
                     timerTypeRef.current = null;
+                    timerTaskRef.current = '';
                 } else if (timerTypeRef.current === 'recurring') {
                     // The worker interval keeps running; move the UI deadline to
                     // the next interval as soon as a check-in is triggered.
@@ -568,7 +591,7 @@ const App: React.FC = () => {
                     );
                 }
 
-                await sendCheckin(currentTaskRef.current);
+                await sendCheckin(timerTask);
             }
         };
 
@@ -763,24 +786,7 @@ function formatTaskForCheckin(task: string): string {
     return rephrasedRest ? `${rephrasedFirst} ${rephrasedRest}` : rephrasedFirst;
 }
 
-    // Handle reminder configuration from AI tool calls
-    const handleReminderConfig = useCallback((reminder: ReminderConfig | null, fallbackTask: string, messageMeta: Partial<ChatMessage> = {}) => {
-        if (!reminder) {
-            return;
-        }
-
-        // Check browser API directly instead of React state (which can be stale)
-        const currentPermission = Notification.permission;
-
-        if (currentPermission !== 'granted') {
-            pushToast('Enable notifications in your browser to get check-in reminders!', 'warning');
-            return;
-        }
-
-        const timeDisplay = reminder.minutes >= 1
-            ? `${reminder.minutes} minute(s)`
-            : `${Math.round(reminder.minutes * 60)} seconds`;
-
+    const startConfiguredReminder = useCallback((reminder: ReminderConfig, fallbackTask: string, messageMeta: Partial<ChatMessage> = {}) => {
         if (reminder.type === 'one-time') {
             setOneTimeReminder(reminder.minutes, fallbackTask, messageMeta);
         } else {
@@ -803,6 +809,49 @@ function formatTaskForCheckin(task: string): string {
             startRecurringCheckin(reminder.minutes, fallbackTask);
         }
     }, [setOneTimeReminder, startRecurringCheckin, user, sessionId]);
+
+    // Handle reminder configuration from AI tool calls.
+    const handleReminderConfig = useCallback((reminder: ReminderConfig | null, fallbackTask: string, messageMeta: Partial<ChatMessage> = {}) => {
+        if (!reminder) {
+            return;
+        }
+
+        // Check browser API directly instead of React state (which can be stale)
+        const currentPermission = Notification.permission;
+
+        if (currentPermission !== 'granted') {
+            pushToast('Enable notifications in your browser to get check-in reminders!', 'warning');
+            return;
+        }
+
+        if (activeTimer) {
+            setPendingTimerRequest({
+                reminder,
+                fallbackTask,
+                messageMeta,
+                currentTimer: {
+                    type: activeTimer.type,
+                    task: activeTimer.task,
+                    remainingSeconds: timerRemainingSeconds ?? 0,
+                },
+            });
+            return;
+        }
+
+        startConfiguredReminder(reminder, fallbackTask, messageMeta);
+    }, [activeTimer, pushToast, startConfiguredReminder, timerRemainingSeconds]);
+
+    const confirmPendingTimerReplacement = useCallback(() => {
+        if (!pendingTimerRequest) return;
+
+        const { reminder, fallbackTask, messageMeta } = pendingTimerRequest;
+        setPendingTimerRequest(null);
+        startConfiguredReminder(reminder, fallbackTask, messageMeta);
+    }, [pendingTimerRequest, startConfiguredReminder]);
+
+    const keepCurrentTimer = useCallback(() => {
+        setPendingTimerRequest(null);
+    }, []);
 
     const handleTaskSubmit = async (newTask: string) => {
         if (!newTask.trim()) return;
@@ -948,6 +997,18 @@ function formatTaskForCheckin(task: string): string {
     };
 
     const currentProviderHasKey = apiKeys[selectedProvider]?.trim() !== '';
+    const timerConfirmation = pendingTimerRequest
+        ? {
+            currentTask: activeTimer?.task || pendingTimerRequest.currentTimer.task,
+            currentType: activeTimer?.type ?? pendingTimerRequest.currentTimer.type,
+            currentRemainingSeconds: activeTimer
+                ? timerRemainingSeconds ?? 0
+                : pendingTimerRequest.currentTimer.remainingSeconds,
+            nextTask: pendingTimerRequest.fallbackTask,
+            nextType: pendingTimerRequest.reminder.type,
+            nextDurationSeconds: Math.max(1, Math.round(pendingTimerRequest.reminder.minutes * 60)),
+        }
+        : null;
 
     return (
         <>
@@ -956,6 +1017,9 @@ function formatTaskForCheckin(task: string): string {
                 displayDate={displayDate}
                 timerRemainingSeconds={timerRemainingSeconds}
                 timerType={activeTimer?.type ?? null}
+                timerConfirmation={timerConfirmation}
+                onConfirmTimerReplacement={confirmPendingTimerReplacement}
+                onKeepCurrentTimer={keepCurrentTimer}
             >
                 {task ? (
                     <ChatInterface

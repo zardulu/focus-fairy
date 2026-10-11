@@ -8,6 +8,16 @@ interface FocusShellProps {
     displayDate?: string;
     timerRemainingSeconds?: number | null;
     timerType?: 'one-time' | 'recurring' | null;
+    timerConfirmation?: {
+        currentTask: string;
+        currentType: 'one-time' | 'recurring';
+        currentRemainingSeconds: number;
+        nextTask: string;
+        nextType: 'one-time' | 'recurring';
+        nextDurationSeconds: number;
+    } | null;
+    onConfirmTimerReplacement?: () => void;
+    onKeepCurrentTimer?: () => void;
 }
 
 const formatCountdown = (totalSeconds: number): string => {
@@ -22,6 +32,9 @@ const FocusShell: React.FC<FocusShellProps> = ({
     displayDate,
     timerRemainingSeconds = null,
     timerType = null,
+    timerConfirmation = null,
+    onConfirmTimerReplacement,
+    onKeepCurrentTimer,
 }) => {
     const { user } = useAuth();
 
@@ -109,6 +122,48 @@ const FocusShell: React.FC<FocusShellProps> = ({
                         </span>
                         <span className="focus-timer-value">{formatCountdown(timerRemainingSeconds)}</span>
                     </div>
+                )}
+                {timerConfirmation && (
+                    <section
+                        className="timer-confirmation animate-fadeIn"
+                        aria-labelledby="timer-confirmation-title"
+                    >
+                        <div className="timer-confirmation-heading">
+                            <span className="timer-confirmation-dot" aria-hidden="true" />
+                            <h2 id="timer-confirmation-title">Timer already running</h2>
+                        </div>
+                        <p className="timer-confirmation-copy">
+                            <strong>{timerConfirmation.currentTask || 'Current task'}</strong> has{' '}
+                            <span className="timer-confirmation-time">
+                                {formatCountdown(timerConfirmation.currentRemainingSeconds)}
+                            </span>{' '}
+                            left on its {timerConfirmation.currentType === 'recurring' ? 'recurring check-in' : 'reminder'}.
+                        </p>
+                        <p className="timer-confirmation-copy">
+                            Start a{' '}
+                            <span className="timer-confirmation-time">
+                                {formatCountdown(timerConfirmation.nextDurationSeconds)}
+                            </span>{' '}
+                            {timerConfirmation.nextType === 'recurring' ? 'check-in timer' : 'reminder'} for{' '}
+                            <strong>{timerConfirmation.nextTask || 'this task'}</strong> instead?
+                        </p>
+                        <div className="timer-confirmation-actions">
+                            <button
+                                type="button"
+                                className="timer-confirmation-keep"
+                                onClick={onKeepCurrentTimer}
+                            >
+                                Keep current
+                            </button>
+                            <button
+                                type="button"
+                                className="timer-confirmation-replace"
+                                onClick={onConfirmTimerReplacement}
+                            >
+                                Replace timer
+                            </button>
+                        </div>
+                    </section>
                 )}
 
                 <div className="focus-content w-full">
