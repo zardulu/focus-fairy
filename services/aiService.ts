@@ -212,6 +212,18 @@ const DEFAULT_AUTO_REMINDER: ReminderConfig = {
     reason: 'Auto-set: AI recorded tasks but did not set a reminder',
 };
 
+const normalizeReminderDuration = (
+    reminder: ReminderConfig | null,
+    explicitDurationMinutes: number | null
+): ReminderConfig | null => {
+    if (!reminder || explicitDurationMinutes === null) return reminder;
+
+    return {
+        ...reminder,
+        minutes: explicitDurationMinutes,
+    };
+};
+
 async function streamAssistantReplyToUI(
     result: {
         textStream: AsyncIterable<string>;
@@ -219,7 +231,8 @@ async function streamAssistantReplyToUI(
         response: PromiseLike<{ messages: Array<{ role: string; content: unknown }> }>;
         staticToolCalls: PromiseLike<Array<{ toolName: string; input?: unknown }>>;
     },
-    onChunk: StreamCallback
+    onChunk: StreamCallback,
+    explicitDurationMinutes: number | null = null
 ): Promise<{ text: string; reminder: ReminderConfig | null; taskUpdate: TaskUpdate | null }> {
     let merged = await recoverAssistantTextFromStream(result);
     let fromMessages = '';
@@ -248,6 +261,9 @@ async function streamAssistantReplyToUI(
         console.log('[FocusFairy] Auto-injecting default reminder (AI recorded tasks but forgot setReminder)');
         reminder = DEFAULT_AUTO_REMINDER;
     }
+
+    // Explicit user durations always take precedence over model defaults or guesses.
+    reminder = normalizeReminderDuration(reminder, explicitDurationMinutes);
 
     const replyText = ensureStreamedAssistantText(merged, fromMessages, reminder, taskUpdate);
 
@@ -298,6 +314,7 @@ When the user mentions a task they want to work on, do NOT immediately call setR
 - If the user mentioned a deadline, include the deadline context in the reason field so check-in messages can reference urgency (e.g., "Due in 3 hours — staying on track").
 
 **FOCUS SESSION TIMING** (IMPORTANT):
+- If the user states an explicit duration, use that exact duration in the setReminder minutes field; never replace it with a default.
 - When a user mentions a duration (e.g., "for the next hour", "for 2 hours", "for 30 minutes"), set up RECURRING check-ins to keep them accountable throughout.
 - Calculate check-in intervals based on total duration:
   - Under 30 min total: check-in every 10 minutes (recurring)
@@ -528,7 +545,10 @@ export const getInitialResponse = async (userInput: string): Promise<AIResponse>
             currentTask = null;
         }
 
-        return response;
+        return {
+            ...response,
+            reminder: normalizeReminderDuration(response.reminder, extractTimeFromMessage(userInput)),
+        };
     } catch (error) {
         const isNoApiKey = error instanceof Error && error.message.includes('No API key');
         return {
@@ -553,7 +573,10 @@ export const continueChat = async (message: string): Promise<AIResponse> => {
             currentTask = message;
         }
 
-        return response;
+        return {
+            ...response,
+            reminder: normalizeReminderDuration(response.reminder, extractTimeFromMessage(message)),
+        };
     } catch (error) {
         const isNoApiKey = error instanceof Error && error.message.includes('No API key');
         return {
@@ -594,7 +617,11 @@ export const streamInitialResponse = async (
         },
     });
 
-    const { text: replyText, reminder, taskUpdate } = await streamAssistantReplyToUI(result, onChunk);
+    const { text: replyText, reminder, taskUpdate } = await streamAssistantReplyToUI(
+        result,
+        onChunk,
+        extractTimeFromMessage(userInput)
+    );
 
     // Store in conversation history
     conversationHistory.push({ role: 'assistant', content: replyText });
@@ -649,7 +676,11 @@ export const streamContinueChat = async (
         },
     });
 
-    const { text: replyText, reminder, taskUpdate } = await streamAssistantReplyToUI(result, onChunk);
+    const { text: replyText, reminder, taskUpdate } = await streamAssistantReplyToUI(
+        result,
+        onChunk,
+        extractTimeFromMessage(message)
+    );
 
     // Store in conversation history
     conversationHistory.push({ role: 'assistant', content: replyText });
@@ -707,36 +738,28 @@ export const generateCheckinMessage = async (fallbackTask: string): Promise<stri
 
 // Legacy exports for backwards compatibility (can be removed later)
 export const extractTimeFromMessage = (message: string): number | null => {
-    // This is now handled by the AI via tool calling
-    // But keep for fallback/manual override scenarios
+    // The AI still decides whether a reminder should exist and whether it is
+    // one-time or recurring. This parser only makes an explicit duration
+    // authoritative when the user has stated one.
     const MAX_INTERVAL_MINUTES = 180;
 
-    const secondsPatterns = [
-        /(?:remind|check|notify|ping|alert).+?(?:in|after)\s+(\d+)\s*(?:sec|second|secs|seconds)/i,
-        /(?:in|after)\s+(\d+)\s*(?:sec|second|secs|seconds)/i,
-        /(\d+)\s*(?:sec|second|secs|seconds)\s*(?:from now|later|timer|reminder)/i,
+    const durationPatterns = [
+        /(?:for|during|over|within|in|after)\s+(?:the\s+)?(?:next\s+)?(?:exactly\s+)?(\d+(?:\.\d+)?)\s*(hours?|hrs?|minutes?|mins?|seconds?|secs?)/i,
+        /\bnext\s+(\d+(?:\.\d+)?)\s*(hours?|hrs?|minutes?|mins?|seconds?|secs?)\b/i,
+        /\b(\d+(?:\.\d+)?)\s*(hours?|hrs?|minutes?|mins?|seconds?|secs?)\b/i,
     ];
 
-    for (const pattern of secondsPatterns) {
+    for (const pattern of durationPatterns) {
         const match = message.match(pattern);
         if (match && match[1]) {
-            const seconds = parseInt(match[1], 10);
-            if (seconds > 0) {
-                return Math.min(seconds / 60, MAX_INTERVAL_MINUTES);
-            }
-        }
-    }
+            const amount = Number(match[1]);
+            const unit = match[2].toLowerCase();
+            const minutes = unit.startsWith('hour') || unit.startsWith('hr')
+                ? amount * 60
+                : unit.startsWith('second') || unit.startsWith('sec')
+                    ? amount / 60
+                    : amount;
 
-    const minutePatterns = [
-        /(?:remind|check|notify|ping|alert).+?(?:in|after)\s+(\d+)\s*(?:min|minute|mins|minutes)/i,
-        /(?:in|after)\s+(\d+)\s*(?:min|minute|mins|minutes)/i,
-        /(\d+)\s*(?:min|minute|mins|minutes)\s*(?:from now|later|timer|reminder)/i,
-    ];
-
-    for (const pattern of minutePatterns) {
-        const match = message.match(pattern);
-        if (match && match[1]) {
-            const minutes = parseInt(match[1], 10);
             if (minutes > 0) {
                 return Math.min(minutes, MAX_INTERVAL_MINUTES);
             }
