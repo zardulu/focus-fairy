@@ -6,9 +6,23 @@ interface FocusShellProps {
     children: React.ReactNode;
     onApiKeyClick?: () => void;
     displayDate?: string;
+    timerRemainingSeconds?: number | null;
+    timerType?: 'one-time' | 'recurring' | null;
 }
 
-const FocusShell: React.FC<FocusShellProps> = ({ children, onApiKeyClick, displayDate }) => {
+const formatCountdown = (totalSeconds: number): string => {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
+const FocusShell: React.FC<FocusShellProps> = ({
+    children,
+    onApiKeyClick,
+    displayDate,
+    timerRemainingSeconds = null,
+    timerType = null,
+}) => {
     const { user } = useAuth();
 
     return (
@@ -81,6 +95,20 @@ const FocusShell: React.FC<FocusShellProps> = ({ children, onApiKeyClick, displa
                     >
                         {displayDate}
                     </p>
+                )}
+                {timerRemainingSeconds !== null && timerRemainingSeconds !== undefined && (
+                    <div
+                        className="focus-timer"
+                        role="status"
+                        aria-live="polite"
+                        aria-label={`${timerType === 'recurring' ? 'Next check-in' : 'Reminder'} in ${formatCountdown(timerRemainingSeconds)}`}
+                    >
+                        <span className="focus-timer-dot" aria-hidden="true" />
+                        <span className="focus-timer-label">
+                            {timerType === 'recurring' ? 'Next check-in' : 'Reminder'}
+                        </span>
+                        <span className="focus-timer-value">{formatCountdown(timerRemainingSeconds)}</span>
+                    </div>
                 )}
 
                 <div className="focus-content w-full">

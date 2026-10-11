@@ -37,6 +37,52 @@ body {
   font-family: 'Playfair Display', Georgia, serif;
 }
 
+/* Compact timer tucked beneath the session date. */
+.focus-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+
+.focus-timer-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-amber);
+  box-shadow: 0 0 0 3px rgba(217, 138, 43, 0.12);
+  animation: timerPulse 2s ease-in-out infinite;
+}
+
+.focus-timer-label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.78;
+}
+
+.focus-timer-value {
+  color: var(--text-dark);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+@keyframes timerPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.9);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 /* Custom scrollbar */
 .custom-scrollbar {
   scrollbar-width: thin;

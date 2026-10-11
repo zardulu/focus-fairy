@@ -29,6 +29,12 @@ interface TaskUpdateResult {
     shouldShowTaskList: boolean;
 }
 
+interface ActiveTimer {
+    type: 'one-time' | 'recurring';
+    durationMs: number;
+    endAt: number;
+}
+
 const normalizeTaskTitle = (title: string) => title.trim().toLowerCase().replace(/\s+/g, ' ');
 
 const createSessionTaskId = () => {
@@ -72,6 +78,7 @@ const App: React.FC = () => {
             workerRef.current.postMessage({ action: 'stop' });
         }
         setActiveTimer(null);
+        timerTypeRef.current = null;
     }, []);
     const { sessionId, isNewSession, displayDate, sessionLoading } = useDailySession(user, handleSessionChange);
     const sessionIdRef = useRef(sessionId);
@@ -96,9 +103,25 @@ const App: React.FC = () => {
         openrouter: '',
         groq: ''
     });
-    const [activeTimer, setActiveTimer] = useState<number | null>(null); // Track active timer minutes
+    const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(null);
+    const [currentTime, setCurrentTime] = useState<number>(() => Date.now());
     const workerRef = useRef<Worker | null>(null);
     const currentTaskRef = useRef<string>(''); // Store current task for worker callback
+
+    // Refresh the visible countdown once per second while a timer is running.
+    useEffect(() => {
+        if (!activeTimer) return;
+
+        const updateCurrentTime = () => setCurrentTime(Date.now());
+        updateCurrentTime();
+        const intervalId = window.setInterval(updateCurrentTime, 1000);
+
+        return () => window.clearInterval(intervalId);
+    }, [activeTimer]);
+
+    const timerRemainingSeconds = activeTimer
+        ? Math.max(0, Math.ceil((activeTimer.endAt - currentTime) / 1000))
+        : null;
 
     // Keep userRef updated to avoid stale closures in worker callbacks
     useEffect(() => {
@@ -478,7 +501,11 @@ const App: React.FC = () => {
         const milliseconds = minutes * 60 * 1000;
         const timeDisplay = minutes >= 1 ? `${minutes} minute(s)` : `${Math.round(minutes * 60)} seconds`;
 
-        setActiveTimer(minutes);
+        setActiveTimer({
+            type: 'one-time',
+            durationMs: milliseconds,
+            endAt: Date.now() + milliseconds,
+        });
 
         const notifStatus = Notification.permission === 'granted'
             ? ''
@@ -509,7 +536,11 @@ const App: React.FC = () => {
 
         const milliseconds = minutes * 60 * 1000;
 
-        setActiveTimer(minutes);
+        setActiveTimer({
+            type: 'recurring',
+            durationMs: milliseconds,
+            endAt: Date.now() + milliseconds,
+        });
 
         // Start worker timer
         if (workerRef.current) {
@@ -525,13 +556,19 @@ const App: React.FC = () => {
         // Handle timer ticks from worker
         workerRef.current.onmessage = async (e) => {
             if (e.data.type === 'tick') {
-                await sendCheckin(currentTaskRef.current);
-
-                // Clear timer state for one-time reminders
                 if (timerTypeRef.current === 'one-time') {
                     setActiveTimer(null);
                     timerTypeRef.current = null;
+                } else if (timerTypeRef.current === 'recurring') {
+                    // The worker interval keeps running; move the UI deadline to
+                    // the next interval as soon as a check-in is triggered.
+                    setActiveTimer(previousTimer => previousTimer
+                        ? { ...previousTimer, endAt: Date.now() + previousTimer.durationMs }
+                        : previousTimer
+                    );
                 }
+
+                await sendCheckin(currentTaskRef.current);
             }
         };
 
@@ -917,6 +954,8 @@ function formatTaskForCheckin(task: string): string {
             <FocusShell
                 onApiKeyClick={() => setShowApiKeyModal(true)}
                 displayDate={displayDate}
+                timerRemainingSeconds={timerRemainingSeconds}
+                timerType={activeTimer?.type ?? null}
             >
                 {task ? (
                     <ChatInterface
